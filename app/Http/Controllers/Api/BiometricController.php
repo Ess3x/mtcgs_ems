@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\DB;
 
 class BiometricController extends Controller
 {
-    // Register employee fingerprint (Admin or Finance Officer or Super Admin)
+    // Register employee fingerprint (Admin or Finance Head)
     public function registerFingerprint(Request $request)
     {
         $request->validate([
@@ -23,9 +23,9 @@ class BiometricController extends Controller
 
         $user = auth()->user();
         
-        // Allow Super Admin, Admin, or Finance staff to register fingerprints
-        if ($user->role !== 'admin' && !in_array($user->role, ['finance_officer', 'finance_head'], true)) {
-            return response()->json(['error' => 'Only Admin, Super Admin, or Finance staff can register fingerprints'], 403);
+        // Finance Officers can view the employee list but cannot register fingerprints.
+        if ($user->role !== 'admin' && $user->role !== 'finance_head') {
+            return response()->json(['error' => 'Only Admin or Finance Head can register fingerprints'], 403);
         }
 
         $employee = EmployeeProfile::findOrFail($request->employee_id);
@@ -824,24 +824,24 @@ class BiometricController extends Controller
         ]);
     }
     
-    // Get employees without fingerprint (for Admin/Super Admin/Finance Officer)
+    // Get employees without fingerprint (for Admin/Super Admin/Finance Head)
     public function getUnregisteredEmployees(Request $request)
     {
         $user = auth()->user();
         
-        if ($user->role !== 'admin' && $user->role !== 'finance_officer') {
+        if ($user->role !== 'admin' && $user->role !== 'finance_head') {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
         
         $branchId = null;
-        if ($user->role === 'finance_officer') {
+        if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $profile = $user->getFinanceProfile();
             $branchId = $profile->branch_id ?? null;
         }
         
         $query = EmployeeProfile::where('is_fingerprint_registered', false);
 
-        if ($user->role === 'finance_officer') {
+        if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $query->where('branch_id', $branchId);
         } elseif ($user->role === 'admin' && $user->admin_type === 'branch_admin') {
             $query->where('branch_id', $user->profile->branch_id);

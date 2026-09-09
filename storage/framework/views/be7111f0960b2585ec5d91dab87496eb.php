@@ -1,0 +1,1 @@
+<?php /**PATH C:\Users\STUDENT\Desktop\mtcgs_ems\resources\views\layouts\sidebar.blade.php ENDPATH**/ ?>
