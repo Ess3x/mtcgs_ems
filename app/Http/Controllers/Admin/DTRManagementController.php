@@ -49,6 +49,10 @@ class DTRManagementController
             $ownEmployeeId = $financeProfile?->employee_profile_id;
 
             if ($user->isFinanceHead() && $financeProfile?->branch_id) {
+                $pendingQuery->where('status', 'approved');
+                $pendingQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
+                    $query->where('branch_id', $financeProfile->branch_id);
+                });
                 $approvedQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
                     $query->where('branch_id', $financeProfile->branch_id);
                 });
@@ -78,7 +82,11 @@ class DTRManagementController
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
             $ownEmployeeId = $financeProfile?->employee_profile_id;
-            if ($ownEmployeeId) {
+            if ($user->isFinanceHead() && $financeProfile?->branch_id) {
+                $totalDTRsQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $financeProfile->branch_id));
+                $approvedDTRsCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $financeProfile->branch_id));
+                $pendingCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $financeProfile->branch_id))->where('status', 'approved');
+            } elseif ($ownEmployeeId) {
                 $totalDTRsQuery->where('employee_profile_id', $ownEmployeeId);
                 $approvedDTRsCountQuery->where('employee_profile_id', $ownEmployeeId);
                 $pendingCountQuery->where('employee_profile_id', $ownEmployeeId)->where('status', 'approved');
@@ -125,8 +133,12 @@ class DTRManagementController
 
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
-            if (!$financeProfile || $dtr->employee_profile_id !== $financeProfile->employee_profile_id) {
-                return redirect('/dashboard')->with('error', 'You can only view your own DTR records.');
+            $isOutsideBranch = !$financeProfile || $dtr->employeeProfile?->branch_id !== $financeProfile->branch_id;
+            $canView = $user->isFinanceHead()
+                ? !$isOutsideBranch
+                : $dtr->employee_profile_id === $financeProfile?->employee_profile_id;
+            if (!$canView) {
+                return redirect('/dashboard')->with('error', 'You can only view DTR records in your assigned scope.');
             }
         }
         

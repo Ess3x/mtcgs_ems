@@ -195,8 +195,8 @@ class DashboardController extends Controller
             ));
         }
         
-        // FINANCE OFFICER
-        if ($user->isFinanceOfficer()) {
+        // FINANCE OFFICER / FINANCE HEAD
+        if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $financeProfile = $user->getFinanceProfile();
             
             // Get branch info with fallback
@@ -262,6 +262,12 @@ class DashboardController extends Controller
                 'monthly_payroll_total' => $monthlyPayroll,
                 'pending_leaves' => $pendingLeaves,
             ];
+
+            if ($requestError = session('error')) {
+                if (in_array($requestError, ['Employee profile not found', 'Branch not assigned'], true)) {
+                    session()->forget('error');
+                }
+            }
             
             return view('finance.dashboard', compact(
                 'branchName', 'stats', 'todayAttendance',

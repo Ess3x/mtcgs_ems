@@ -574,6 +574,11 @@
                     <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
+                    @if(Auth::user()->isFinanceHead())
+                        <a class="nav-link {{ request()->routeIs('admin.dtr.*') ? 'active' : '' }}" href="{{ route('admin.dtr.index') }}">
+                            <i class="fas fa-clock"></i> DTR Management
+                        </a>
+                    @endif
                 </div>
             @endif
 
@@ -705,7 +710,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             @endif
-            @if(session('error'))
+            @if(session('error') && !(in_array(Auth::user()->role, ['finance_officer', 'finance_head'], true) && session('error') === 'Employee profile not found'))
                 <div class="alert alert-danger alert-dismissible fade show">{{ session('error') }}
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>

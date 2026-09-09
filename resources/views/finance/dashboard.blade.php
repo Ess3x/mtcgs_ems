@@ -126,6 +126,7 @@
 
     <!-- Payroll Summary + My DTR Row -->
     <div class="row g-3 mb-4">
+        @if(Auth::user()->role !== 'finance_head')
         <div class="col-lg-6">
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
@@ -231,9 +232,11 @@
                 </div>
             </div>
         </div>
+        @endif
     </div>
 
     <!-- My DTR + Biometric Registration Row -->
+    @if(Auth::user()->role !== 'finance_head')
     <div class="row g-3 mb-4">
         <div class="col-md-6">
             <div class="card h-100">
@@ -285,6 +288,7 @@
             </div>
         </div>
     </div>
+    @endif
 
     <!-- Today's Attendance Table -->
     <div class="card mb-4">

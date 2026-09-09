@@ -574,6 +574,11 @@
                     <a class="nav-link <?php echo e(request()->routeIs('cash-advances.*') ? 'active' : ''); ?>" href="<?php echo e(route('cash-advances.index')); ?>">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
+                    <?php if(Auth::user()->isFinanceHead()): ?>
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.dtr.*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.dtr.index')); ?>">
+                            <i class="fas fa-clock"></i> DTR Management
+                        </a>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 
@@ -706,7 +711,7 @@
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
             <?php endif; ?>
-            <?php if(session('error')): ?>
+            <?php if(session('error') && !(in_array(Auth::user()->role, ['finance_officer', 'finance_head'], true) && session('error') === 'Employee profile not found')): ?>
                 <div class="alert alert-danger alert-dismissible fade show"><?php echo e(session('error')); ?>
 
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>

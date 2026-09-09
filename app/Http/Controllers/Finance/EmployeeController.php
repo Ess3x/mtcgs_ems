@@ -22,18 +22,14 @@ class EmployeeController extends Controller
         $user = Auth::user();
         if ($user->isFinanceOfficer()) {
             $profile = $user->getFinanceProfile();
-            return $profile->branch_id ?? null;
+            return $profile?->branch_id ?? $user->branch_id ?? 1;
         }
-        return null;
+        return $user->branch_id ?? 1;
     }
     
     public function index()
     {
         $branchId = $this->getBranchId();
-        
-        if (!$branchId) {
-            return redirect('/dashboard')->with('error', 'Branch not assigned');
-        }
         
         // IMPORTANTE: I-filter ang employees LANG - ACTIVE only!
         // Kunin ang lahat ng employee_profiles na nasa branch
