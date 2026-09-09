@@ -1,0 +1,32 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up()
+    {
+        if (!Schema::hasTable('leave_requests')) {
+            Schema::create('leave_requests', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('employee_id');
+                $table->string('leave_type');
+                $table->date('start_date');
+                $table->date('end_date');
+                $table->integer('total_days');
+                $table->text('reason');
+                $table->string('status')->default('pending');
+                $table->text('approval_remarks')->nullable();
+                $table->timestamp('approved_at')->nullable();
+                $table->timestamps();
+            });
+        }
+    }
+
+    public function down()
+    {
+        Schema::dropIfExists('leave_requests');
+    }
+};

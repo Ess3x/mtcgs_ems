@@ -1,0 +1,1 @@
+<?php /**PATH C:\xampp\htdocs\mtcgs-main_09-06-26\mtcgs-ems\resources\views\layouts\footer.blade.php ENDPATH**/ ?>

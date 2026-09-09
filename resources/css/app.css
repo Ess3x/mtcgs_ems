@@ -1,0 +1,9 @@
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+/* Bootstrap first - no conflicts */
+@import 'bootstrap/dist/css/bootstrap.min.css';
+
+/* Tailwind with tw- prefix to avoid Bootstrap conflicts */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

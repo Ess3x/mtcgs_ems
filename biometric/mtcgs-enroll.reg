@@ -1,0 +1,8 @@
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\mtcgs-enroll]
+@="URL: MTCGS Enroll Protocol"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\mtcgs-enroll\shell\open\command]
+@="\"C:\\Users\\Meg Rhyan\\source\\repos\\MTCGS_Enroll\\bin\\Debug\\MTCGS_Enroll.exe\" \"%1\""
