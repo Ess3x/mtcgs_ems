@@ -126,8 +126,16 @@
                         <span class="badge bg-success py-2 px-3">Approved {{ $approvedDTRsCount }}</span>
                         @if(Auth::user()->isBranchAdmin() || Auth::user()->isSuperAdmin())
                             <a href="{{ route('admin.dtr.export-submitted') }}" class="btn btn-sm btn-success">
-                                <i class="fas fa-file-excel me-1"></i> Export Submitted DTRs
+                                <i class="fas fa-file-excel me-1"></i> Export DTR Excel
                             </a>
+                            @if(Auth::user()->isBranchAdmin() && $pendingCount > 0)
+                                <form method="POST" action="{{ route('admin.dtr.submit-all-to-hr') }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Submit all submitted branch DTRs and the combined Excel report to HR?')">
+                                        <i class="fas fa-paper-plane me-1"></i> Submit All to HR
+                                    </button>
+                                </form>
+                            @endif
                         @endif
                     </div>
                 </div>

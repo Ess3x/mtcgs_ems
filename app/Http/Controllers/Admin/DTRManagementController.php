@@ -129,7 +129,7 @@ class DTRManagementController
         }
 
         $query = DTR::with('employeeProfile.branch')
-            ->where('status', 'submitted')
+            ->whereIn('status', ['submitted', 'pending_system_admin'])
             ->orderBy('period_start')
             ->orderBy('employee_profile_id');
 
@@ -204,6 +204,35 @@ class DTRManagementController
         }, 'submitted-dtrs-' . now()->format('Ymd-His') . '.xlsx', [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    public function submitAllToHr()
+    {
+        $user = Auth::user();
+        abort_unless($user->isBranchAdmin(), 403, 'Only the Branch Head can submit DTRs to HR.');
+
+        $branchId = $user->getEffectiveBranchId();
+        abort_unless($branchId, 422, 'Branch is not assigned.');
+
+        $dtrs = DTR::with('employeeProfile')
+            ->where('status', 'submitted')
+            ->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))
+            ->get();
+
+        if ($dtrs->isEmpty()) {
+            return back()->with('error', 'There are no submitted DTRs ready to send to HR.');
+        }
+
+        $dtrs->each(function (DTR $dtr) {
+            $dtr->update([
+                'status' => 'pending_system_admin',
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+            $this->notifySystemReviewers($dtr);
+        });
+
+        return back()->with('success', $dtrs->count() . ' DTR(s) and the combined attendance report were submitted to HR for review.');
     }
 
     /**
