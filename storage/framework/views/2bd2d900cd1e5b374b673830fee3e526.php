@@ -1,8 +1,6 @@
-@extends('layouts.app')
+<?php $__env->startSection('title', 'My Profile'); ?>
 
-@section('title', 'My Profile')
-
-@section('content')
+<?php $__env->startSection('content'); ?>
 <div class="container-fluid profile-page">
     <!-- Header -->
     <div class="row mb-4">
@@ -14,7 +12,7 @@
                     </h2>
                     <p class="text-muted mb-0">View and manage your account information</p>
                 </div>
-                <a href="{{ route('dashboard') }}" class="btn btn-outline-primary">
+                <a href="<?php echo e(route('dashboard')); ?>" class="btn btn-outline-primary">
                     <i class="fas fa-arrow-left me-2"></i>Back to Dashboard
                 </a>
             </div>
@@ -41,37 +39,44 @@
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Full Name</div>
-                                <p class="mb-0 fw-semibold">{{ $user->name }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($user->name); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Email Address</div>
-                                <form method="POST" action="{{ route('profile.update') }}" class="d-flex gap-2 align-items-start">
-                                    @csrf
-                                    @method('PATCH')
-                                    <input type="hidden" name="name" value="{{ $user->name }}">
-                                    <input type="email" name="email" value="{{ old('email', $user->email) }}" class="form-control form-control-sm" required autocomplete="email">
+                                <form method="POST" action="<?php echo e(route('profile.update')); ?>" class="d-flex gap-2 align-items-start">
+                                    <?php echo csrf_field(); ?>
+                                    <?php echo method_field('PATCH'); ?>
+                                    <input type="hidden" name="name" value="<?php echo e($user->name); ?>">
+                                    <input type="email" name="email" value="<?php echo e(old('email', $user->email)); ?>" class="form-control form-control-sm" required autocomplete="email">
                                     <button type="submit" class="btn btn-sm btn-primary text-nowrap">
                                         <i class="fas fa-save me-1"></i>Save
                                     </button>
                                 </form>
-                                @if(session('status') === 'profile-updated')
+                                <?php if(session('status') === 'profile-updated'): ?>
                                     <small class="text-success d-block mt-1"><i class="fas fa-check-circle me-1"></i>Email updated successfully.</small>
-                                @endif
-                                @error('email')
-                                    <small class="text-danger d-block mt-1">{{ $message }}</small>
-                                @enderror
+                                <?php endif; ?>
+                                <?php $__errorArgs = ['email'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                    <small class="text-danger d-block mt-1"><?php echo e($message); ?></small>
+                                <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Role</div>
                                 <p class="mb-0">
-                                    <span class="badge bg-primary">{{ ucfirst($user->role) }}</span>
-                                    @if($user->role === 'admin' && $user->admin_type)
-                                        <small class="text-muted ms-1">({{ ucfirst(str_replace('_', ' ', $user->admin_type)) }})</small>
-                                    @endif
+                                    <span class="badge bg-primary"><?php echo e(ucfirst($user->role)); ?></span>
+                                    <?php if($user->role === 'admin' && $user->admin_type): ?>
+                                        <small class="text-muted ms-1">(<?php echo e(ucfirst(str_replace('_', ' ', $user->admin_type))); ?>)</small>
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
@@ -79,15 +84,15 @@
                             <div class="mb-3">
                                 <div class="form-label text-muted">Account Status</div>
                                 <p class="mb-0">
-                                    @if($user->is_active)
+                                    <?php if($user->is_active): ?>
                                         <span class="badge bg-success">
                                             <i class="fas fa-check-circle me-1"></i>Active
                                         </span>
-                                    @else
+                                    <?php else: ?>
                                         <span class="badge bg-danger">
                                             <i class="fas fa-times-circle me-1"></i>Inactive
                                         </span>
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
@@ -95,80 +100,81 @@
                             <div class="mb-3">
                                 <div class="form-label text-muted">ID Verification Status</div>
                                 <p class="mb-0">
-                                    @if($user->id_verification_status === 'approved')
+                                    <?php if($user->id_verification_status === 'approved'): ?>
                                         <span class="badge bg-success">
                                             <i class="fas fa-check-circle me-1"></i>Verified
                                         </span>
-                                    @elseif($user->id_verification_status === 'pending')
+                                    <?php elseif($user->id_verification_status === 'pending'): ?>
                                         <span class="badge bg-warning">
                                             <i class="fas fa-clock me-1"></i>Pending
                                         </span>
-                                    @elseif($user->id_verification_status === 'rejected')
+                                    <?php elseif($user->id_verification_status === 'rejected'): ?>
                                         <span class="badge bg-danger">
                                             <i class="fas fa-times-circle me-1"></i>Rejected
                                         </span>
-                                    @else
+                                    <?php else: ?>
                                         <span class="badge bg-secondary">
                                             <i class="fas fa-question-circle me-1"></i>Not Submitted
                                         </span>
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
-                        @if($user->last_login_at)
+                        <?php if($user->last_login_at): ?>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Last Login</div>
-                                <p class="mb-0 fw-semibold">{{ $user->last_login_at->format('M d, Y h:i A') }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($user->last_login_at->format('M d, Y h:i A')); ?></p>
                             </div>
                         </div>
-                        @endif
+                        <?php endif; ?>
                     </div>
 
                     <!-- Profile Specific Information -->
-                    @if($profile)
+                    <?php if($profile): ?>
                     <hr>
                     <div class="row">
                         <div class="col-12">
                             <h6 class="text-primary mb-3">
-                                <i class="fas fa-briefcase me-2"></i>{{ $profileType }} Details
+                                <i class="fas fa-briefcase me-2"></i><?php echo e($profileType); ?> Details
                             </h6>
                         </div>
 
-                        @if($profile instanceof \App\Models\EmployeeProfile)
+                        <?php if($profile instanceof \App\Models\EmployeeProfile): ?>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Employee Number</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->employee_number }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->employee_number); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Position</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->position ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->position ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Department</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->department ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->department ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Employment Type</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->employment_type ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->employment_type ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Date Hired</div>
                                 <p class="mb-0 fw-semibold">
-                                    @if($profile->date_hired)
-                                        {{ \Carbon\Carbon::parse($profile->date_hired)->format('M d, Y') }}
-                                    @else
+                                    <?php if($profile->date_hired): ?>
+                                        <?php echo e(\Carbon\Carbon::parse($profile->date_hired)->format('M d, Y')); ?>
+
+                                    <?php else: ?>
                                         Not specified
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
@@ -176,33 +182,34 @@
                             <div class="mb-3">
                                 <div class="form-label text-muted">Basic Salary</div>
                                 <p class="mb-0 fw-semibold">
-                                    @if($profile->basic_salary)
-                                        ₱{{ number_format($profile->basic_salary, 2) }}
-                                    @else
+                                    <?php if($profile->basic_salary): ?>
+                                        ₱<?php echo e(number_format($profile->basic_salary, 2)); ?>
+
+                                    <?php else: ?>
                                         Not specified
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Branch</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->branch ? $profile->branch->branch_name : 'Not assigned' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->branch ? $profile->branch->branch_name : 'Not assigned'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Fingerprint Status</div>
                                 <p class="mb-0">
-                                    @if($profile->is_fingerprint_registered)
+                                    <?php if($profile->is_fingerprint_registered): ?>
                                         <span class="badge bg-success">
                                             <i class="fas fa-check-circle me-1"></i>Registered
                                         </span>
-                                    @else
+                                    <?php else: ?>
                                         <span class="badge bg-warning">
                                             <i class="fas fa-times-circle me-1"></i>Not Registered
                                         </span>
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
@@ -212,27 +219,27 @@
                                 <h6 class="text-primary mb-0"><i class="fas fa-id-card me-2"></i>Government Numbers</h6>
                                 <button type="button" class="btn btn-sm btn-outline-primary" id="edit-government-numbers"><i class="fas fa-pen me-1"></i>Edit</button>
                             </div>
-                            <form method="POST" action="{{ route('profile.update') }}">
-                                @csrf
-                                @method('PATCH')
-                                <input type="hidden" name="name" value="{{ $user->name }}">
-                                <input type="hidden" name="email" value="{{ $user->email }}">
+                            <form method="POST" action="<?php echo e(route('profile.update')); ?>">
+                                <?php echo csrf_field(); ?>
+                                <?php echo method_field('PATCH'); ?>
+                                <input type="hidden" name="name" value="<?php echo e($user->name); ?>">
+                                <input type="hidden" name="email" value="<?php echo e($user->email); ?>">
                                 <div class="row g-3">
                                     <div class="col-md-6">
                                         <label for="sss-number" class="form-label">SSS Number</label>
-                                        <input id="sss-number" name="sss_number" type="text" class="form-control government-number-field" value="{{ old('sss_number', $profile->sss_number) }}" placeholder="e.g. 12-3456789-0" maxlength="30" disabled>
+                                        <input id="sss-number" name="sss_number" type="text" class="form-control government-number-field" value="<?php echo e(old('sss_number', $profile->sss_number)); ?>" placeholder="e.g. 12-3456789-0" maxlength="30" disabled>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="philhealth-number" class="form-label">PhilHealth Number</label>
-                                        <input id="philhealth-number" name="philhealth_number" type="text" class="form-control government-number-field" value="{{ old('philhealth_number', $profile->philhealth_number) }}" placeholder="Enter PhilHealth number" maxlength="30" disabled>
+                                        <input id="philhealth-number" name="philhealth_number" type="text" class="form-control government-number-field" value="<?php echo e(old('philhealth_number', $profile->philhealth_number)); ?>" placeholder="Enter PhilHealth number" maxlength="30" disabled>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="pagibig-number" class="form-label">Pag-IBIG Number</label>
-                                        <input id="pagibig-number" name="pagibig_number" type="text" class="form-control government-number-field" value="{{ old('pagibig_number', $profile->pagibig_number) }}" placeholder="Enter Pag-IBIG number" maxlength="30" disabled>
+                                        <input id="pagibig-number" name="pagibig_number" type="text" class="form-control government-number-field" value="<?php echo e(old('pagibig_number', $profile->pagibig_number)); ?>" placeholder="Enter Pag-IBIG number" maxlength="30" disabled>
                                     </div>
                                     <div class="col-md-6">
                                         <label for="tin-number" class="form-label">TIN Number</label>
-                                        <input id="tin-number" name="tin_number" type="text" class="form-control government-number-field" value="{{ old('tin_number', $profile->tin_number) }}" placeholder="Enter TIN number" maxlength="30" disabled>
+                                        <input id="tin-number" name="tin_number" type="text" class="form-control government-number-field" value="<?php echo e(old('tin_number', $profile->tin_number)); ?>" placeholder="Enter TIN number" maxlength="30" disabled>
                                     </div>
                                     <div class="col-12">
                                         <button type="submit" class="btn btn-primary d-none" id="save-government-numbers"><i class="fas fa-save me-1"></i>Save Changes</button>
@@ -240,81 +247,82 @@
                                 </div>
                             </form>
                         </div>
-                        @elseif($profile instanceof \App\Models\AdminProfile)
+                        <?php elseif($profile instanceof \App\Models\AdminProfile): ?>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Employee Number</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->employee_number }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->employee_number); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Position</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->position ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->position ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Department</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->department ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->department ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Admin Level</div>
-                                <p class="mb-0 fw-semibold">{{ ucfirst(str_replace('_', ' ', $profile->admin_level ?? 'regular')) }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e(ucfirst(str_replace('_', ' ', $profile->admin_level ?? 'regular'))); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Date Hired</div>
                                 <p class="mb-0 fw-semibold">
-                                    @if($profile->date_hired)
-                                        {{ \Carbon\Carbon::parse($profile->date_hired)->format('M d, Y') }}
-                                    @else
+                                    <?php if($profile->date_hired): ?>
+                                        <?php echo e(\Carbon\Carbon::parse($profile->date_hired)->format('M d, Y')); ?>
+
+                                    <?php else: ?>
                                         Not specified
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Branch</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->branch ? $profile->branch->branch_name : 'Not assigned' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->branch ? $profile->branch->branch_name : 'Not assigned'); ?></p>
                             </div>
                         </div>
-                        @elseif($profile instanceof \App\Models\FinanceProfile)
+                        <?php elseif($profile instanceof \App\Models\FinanceProfile): ?>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Employee Number</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->employee_number }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->employee_number); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Position</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->position ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->position ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Department</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->department ?? 'Not specified' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->department ?? 'Not specified'); ?></p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Payroll Processing</div>
                                 <p class="mb-0">
-                                    @if($profile->can_process_payroll)
+                                    <?php if($profile->can_process_payroll): ?>
                                         <span class="badge bg-success">
                                             <i class="fas fa-check-circle me-1"></i>Enabled
                                         </span>
-                                    @else
+                                    <?php else: ?>
                                         <span class="badge bg-secondary">
                                             <i class="fas fa-times-circle me-1"></i>Disabled
                                         </span>
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
@@ -322,30 +330,31 @@
                             <div class="mb-3">
                                 <div class="form-label text-muted">Date Hired</div>
                                 <p class="mb-0 fw-semibold">
-                                    @if($profile->date_hired)
-                                        {{ \Carbon\Carbon::parse($profile->date_hired)->format('M d, Y') }}
-                                    @else
+                                    <?php if($profile->date_hired): ?>
+                                        <?php echo e(\Carbon\Carbon::parse($profile->date_hired)->format('M d, Y')); ?>
+
+                                    <?php else: ?>
                                         Not specified
-                                    @endif
+                                    <?php endif; ?>
                                 </p>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="mb-3">
                                 <div class="form-label text-muted">Branch</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->branch ? $profile->branch->branch_name : 'Not assigned' }}</p>
+                                <p class="mb-0 fw-semibold"><?php echo e($profile->branch ? $profile->branch->branch_name : 'Not assigned'); ?></p>
                             </div>
                         </div>
-                        @endif
+                        <?php endif; ?>
                     </div>
-                    @endif
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
 
         <!-- ID Document Section -->
         <div class="col-lg-4">
-            @if($profile instanceof \App\Models\EmployeeProfile || $profile instanceof \App\Models\FinanceProfile || $profile instanceof \App\Models\AdminProfile)
+            <?php if($profile instanceof \App\Models\EmployeeProfile || $profile instanceof \App\Models\FinanceProfile || $profile instanceof \App\Models\AdminProfile): ?>
             <div class="card border-0 shadow-sm mb-4">
                 <div class="card-header bg-white">
                     <h5 class="mb-0">
@@ -353,13 +362,14 @@
                     </h5>
                 </div>
                 <div class="card-body">
-                    @if(session('signature_updated'))
+                    <?php if(session('signature_updated')): ?>
                         <div class="alert alert-success py-2" role="alert">
-                            <i class="fas fa-check-circle me-1"></i>{{ session('signature_updated') }}
+                            <i class="fas fa-check-circle me-1"></i><?php echo e(session('signature_updated')); ?>
+
                         </div>
-                    @endif
+                    <?php endif; ?>
                     <p class="text-muted small">Draw your signature below. It will be used when submitting your DTR.</p>
-                    @php
+                    <?php
                         $linkedSignaturePath = null;
                         if ($profile instanceof \App\Models\EmployeeProfile) {
                             $linkedSignaturePath = \App\Models\FinanceProfile::where('employee_profile_id', $profile->id)->value('signature_path')
@@ -367,15 +377,15 @@
                         }
                         $hasSavedSignature = ($profile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($profile->signature_path))
                             || ($linkedSignaturePath && \Illuminate\Support\Facades\Storage::disk('public')->exists($linkedSignaturePath));
-                    @endphp
-                    @if($hasSavedSignature)
+                    ?>
+                    <?php if($hasSavedSignature): ?>
                         <div class="border rounded p-2 mb-3 text-center">
-                            <img src="{{ $profile instanceof \App\Models\EmployeeProfile ? route('profile.signature', $profile->id) : route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id]) }}" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
+                            <img src="<?php echo e($profile instanceof \App\Models\EmployeeProfile ? route('profile.signature', $profile->id) : route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id])); ?>" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
                             <div class="small text-muted mt-1">Saved signature</div>
                         </div>
-                    @endif
-                    <form method="POST" action="{{ route('profile.signature.save') }}" id="signature-form">
-                        @csrf
+                    <?php endif; ?>
+                    <form method="POST" action="<?php echo e(route('profile.signature.save')); ?>" id="signature-form">
+                        <?php echo csrf_field(); ?>
                         <canvas id="signature-canvas" width="500" height="180" aria-label="Signature drawing area"></canvas>
                         <input type="hidden" name="signature" id="signature-input">
                         <div class="d-flex gap-2 mt-2">
@@ -389,7 +399,7 @@
                     </form>
                 </div>
             </div>
-            @endif
+            <?php endif; ?>
 
             <!-- Quick Actions -->
             <div class="card border-0 shadow-sm">
@@ -400,17 +410,17 @@
                 </div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <a href="{{ route('dashboard') }}" class="btn btn-outline-primary">
+                        <a href="<?php echo e(route('dashboard')); ?>" class="btn btn-outline-primary">
                             <i class="fas fa-tachometer-alt me-2"></i>Go to Dashboard
                         </a>
-                        @if($user->role === 'employee')
-                        <a href="{{ route('leave.index') }}" class="btn btn-outline-success">
+                        <?php if($user->role === 'employee'): ?>
+                        <a href="<?php echo e(route('leave.index')); ?>" class="btn btn-outline-success">
                             <i class="fas fa-calendar-alt me-2"></i>Request Leave
                         </a>
-                        <a href="{{ route('employee.payslips') }}" class="btn btn-outline-info">
+                        <a href="<?php echo e(route('employee.payslips')); ?>" class="btn btn-outline-info">
                             <i class="fas fa-file-invoice-dollar me-2"></i>View Payslips
                         </a>
-                        @endif
+                        <?php endif; ?>
                         <a href="#change-password" class="btn btn-outline-primary" id="quick-change-password">
                             <i class="fas fa-key me-2"></i>Change Password
                         </a>
@@ -432,37 +442,66 @@
                     </button>
                 </div>
                 <div class="card-body" id="password-form-container">
-                    @if(session('password_updated'))
+                    <?php if(session('password_updated')): ?>
                         <div class="alert alert-success py-2" role="alert">
-                            <i class="fas fa-check-circle me-1"></i>{{ session('password_updated') }}
-                        </div>
-                    @endif
+                            <i class="fas fa-check-circle me-1"></i><?php echo e(session('password_updated')); ?>
 
-                    <form method="POST" action="{{ route('password.update.profile') }}">
-                        @csrf
-                        @method('PUT')
-                        <input type="text" name="username" value="{{ $user->email }}" autocomplete="username" hidden>
+                        </div>
+                    <?php endif; ?>
+
+                    <form method="POST" action="<?php echo e(route('password.update.profile')); ?>">
+                        <?php echo csrf_field(); ?>
+                        <?php echo method_field('PUT'); ?>
+                        <input type="text" name="username" value="<?php echo e($user->email); ?>" autocomplete="username" hidden>
                         <div class="mb-3">
                             <label for="current_password" class="form-label">Current Password</label>
                             <div class="input-group">
-                                <input type="password" class="form-control @error('current_password', 'updatePassword') is-invalid @enderror"
+                                <input type="password" class="form-control <?php $__errorArgs = ['current_password', 'updatePassword'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
                                        id="current_password" name="current_password" required autocomplete="current-password">
                                 <button type="button" class="btn btn-outline-secondary toggle-password" data-target="current_password" aria-label="Show current password" title="Show password"><i class="fas fa-eye"></i></button>
                             </div>
-                            @error('current_password', 'updatePassword')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+                            <?php $__errorArgs = ['current_password', 'updatePassword'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                <div class="invalid-feedback"><?php echo e($message); ?></div>
+                            <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
                         </div>
                         <div class="mb-3">
                             <label for="password" class="form-label">New Password</label>
                             <div class="input-group">
-                                <input type="password" class="form-control @error('password', 'updatePassword') is-invalid @enderror"
+                                <input type="password" class="form-control <?php $__errorArgs = ['password', 'updatePassword'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?> is-invalid <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>"
                                        id="password" name="password" required minlength="8" autocomplete="new-password">
                                 <button type="button" class="btn btn-outline-secondary toggle-password" data-target="password" aria-label="Show new password" title="Show password"><i class="fas fa-eye"></i></button>
                             </div>
-                            @error('password', 'updatePassword')
-                                <div class="invalid-feedback">{{ $message }}</div>
-                            @enderror
+                            <?php $__errorArgs = ['password', 'updatePassword'];
+$__bag = $errors->getBag($__errorArgs[1] ?? 'default');
+if ($__bag->has($__errorArgs[0])) :
+if (isset($message)) { $__messageOriginal = $message; }
+$message = $__bag->first($__errorArgs[0]); ?>
+                                <div class="invalid-feedback"><?php echo e($message); ?></div>
+                            <?php unset($message);
+if (isset($__messageOriginal)) { $message = $__messageOriginal; }
+endif;
+unset($__errorArgs, $__bag); ?>
                             <small class="text-muted">Use at least 8 characters.</small>
                         </div>
                         <div class="mb-3">
@@ -510,7 +549,7 @@
     }
 }
 </style>
-@if($profile instanceof \App\Models\EmployeeProfile || $profile instanceof \App\Models\FinanceProfile || $profile instanceof \App\Models\AdminProfile)
+<?php if($profile instanceof \App\Models\EmployeeProfile || $profile instanceof \App\Models\FinanceProfile || $profile instanceof \App\Models\AdminProfile): ?>
 <script>
     (() => {
         const canvas = document.getElementById('signature-canvas');
@@ -575,7 +614,7 @@
         });
     })();
 </script>
-@endif
+<?php endif; ?>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const editButton = document.getElementById('edit-government-numbers');
@@ -608,7 +647,7 @@
         const passwordToggle = document.getElementById('quick-change-password');
         const passwordContainer = document.getElementById('password-form-container');
         const closePasswordButton = document.getElementById('close-password-form');
-        const passwordWasUpdated = {{ session('password_updated') ? 'true' : 'false' }};
+        const passwordWasUpdated = <?php echo e(session('password_updated') ? 'true' : 'false'); ?>;
 
         if (passwordToggle && passwordContainer) {
             passwordToggle.addEventListener('click', function (event) {
@@ -625,7 +664,7 @@
                 window.history.replaceState(null, '', window.location.pathname);
             });
 
-            const passwordHasErrors = {{ $errors->updatePassword->any() ? 'true' : 'false' }};
+            const passwordHasErrors = <?php echo e($errors->updatePassword->any() ? 'true' : 'false'); ?>;
 
             if (passwordWasUpdated || passwordHasErrors) {
                 document.getElementById('change-password')?.classList.remove('d-none');
@@ -636,4 +675,5 @@
     });
 </script>
 
-@endsection
+<?php $__env->stopSection(); ?>
+<?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\Users\STUDENT\Desktop\mtcgs_ems\resources\views/profile.blade.php ENDPATH**/ ?>

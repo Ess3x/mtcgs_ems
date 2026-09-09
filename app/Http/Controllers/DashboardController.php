@@ -537,9 +537,18 @@ class DashboardController extends Controller
         $profile = $profileClass::findOrFail($id);
         $user = Auth::user();
         abort_unless($profile->user_id === $user->id || $user->isAdmin(), 403);
-        abort_unless($profile->signature_path && Storage::disk('public')->exists($profile->signature_path), 404);
 
-        return response()->file(Storage::disk('public')->path($profile->signature_path));
+        $path = $profile->signature_path;
+        if ((!$path || !Storage::disk('public')->exists($path)) && $profile instanceof EmployeeProfile) {
+            $path = FinanceProfile::where('employee_profile_id', $profile->id)->value('signature_path');
+        }
+        if ((!$path || !Storage::disk('public')->exists($path)) && $profile instanceof EmployeeProfile) {
+            $path = AdminProfile::where('employee_profile_id', $profile->id)->value('signature_path');
+        }
+
+        abort_unless($path && Storage::disk('public')->exists($path), 404);
+
+        return response()->file(Storage::disk('public')->path($path));
     }
 
     public function profileDocument()

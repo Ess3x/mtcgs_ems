@@ -369,9 +369,18 @@ unset($__errorArgs, $__bag); ?>
                         </div>
                     <?php endif; ?>
                     <p class="text-muted small">Draw your signature below. It will be used when submitting your DTR.</p>
-                    <?php if($profile->signature_path): ?>
+                    <?php
+                        $linkedSignaturePath = null;
+                        if ($profile instanceof \App\Models\EmployeeProfile) {
+                            $linkedSignaturePath = \App\Models\FinanceProfile::where('employee_profile_id', $profile->id)->value('signature_path')
+                                ?? \App\Models\AdminProfile::where('employee_profile_id', $profile->id)->value('signature_path');
+                        }
+                        $hasSavedSignature = ($profile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($profile->signature_path))
+                            || ($linkedSignaturePath && \Illuminate\Support\Facades\Storage::disk('public')->exists($linkedSignaturePath));
+                    ?>
+                    <?php if($hasSavedSignature): ?>
                         <div class="border rounded p-2 mb-3 text-center">
-                            <img src="<?php echo e(route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id])); ?>" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
+                            <img src="<?php echo e($profile instanceof \App\Models\EmployeeProfile ? route('profile.signature', $profile->id) : route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id])); ?>" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
                             <div class="small text-muted mt-1">Saved signature</div>
                         </div>
                     <?php endif; ?>
