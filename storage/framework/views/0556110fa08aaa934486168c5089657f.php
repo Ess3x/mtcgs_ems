@@ -666,7 +666,7 @@
                 }
             ?>
             <div class="dropdown">
-                <button id="profileMenuToggle" class="btn btn-light btn-sm d-inline-flex align-items-center text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Open account menu">
+                <button id="profileMenuToggle" class="btn btn-light btn-sm d-inline-flex align-items-center gap-2 text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Open account menu">
                     <?php if($headerPhotoUrl): ?>
                         <img src="<?php echo e($headerPhotoUrl); ?>" alt="Profile photo" class="rounded-circle" style="width: 28px; height: 28px; object-fit: cover;">
                     <?php else: ?>
