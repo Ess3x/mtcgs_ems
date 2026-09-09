@@ -114,6 +114,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/profile/signature', [DashboardController::class, 'saveSignature'])->name('profile.signature.save');
     Route::get('/profile/signature/{profile}', [DashboardController::class, 'signature'])->name('profile.signature');
     Route::get('/profile/signature/{type}/{id}', [DashboardController::class, 'profileSignature'])->name('profile.signature.any');
+    Route::post('/profile/photo', [DashboardController::class, 'saveProfilePhoto'])->name('profile.photo.save');
+    Route::get('/profile/photo/{type}/{id}', [DashboardController::class, 'profilePhoto'])->name('profile.photo');
     Route::patch('/profile', function (Request $request) {
         $validated = $request->validate([
             'name' => 'required|string|max:255',

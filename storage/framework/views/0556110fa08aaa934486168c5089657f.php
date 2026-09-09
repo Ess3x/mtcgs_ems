@@ -655,9 +655,23 @@
                 <i id="themeIcon" class="fas fa-moon"></i>
                 <span id="themeLabel" class="theme-label">Dark Mode</span>
             </button>
+            <?php
+                $headerProfile = Auth::user()->profile;
+                if (!$headerProfile && Auth::user()->role === 'admin') {
+                    $headerProfile = Auth::user()->getAdminProfile();
+                }
+                $headerPhotoUrl = null;
+                if ($headerProfile?->profile_photo && \Illuminate\Support\Facades\Storage::disk('public')->exists($headerProfile->profile_photo)) {
+                    $headerPhotoUrl = route('profile.photo', [strtolower(class_basename($headerProfile)), $headerProfile->id]) . '?v=' . $headerProfile->updated_at?->timestamp;
+                }
+            ?>
             <div class="dropdown">
                 <button id="profileMenuToggle" class="btn btn-light btn-sm d-inline-flex align-items-center text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Open account menu">
-                    <i class="fas fa-user-circle"></i>
+                    <?php if($headerPhotoUrl): ?>
+                        <img src="<?php echo e($headerPhotoUrl); ?>" alt="Profile photo" class="rounded-circle" style="width: 28px; height: 28px; object-fit: cover;">
+                    <?php else: ?>
+                        <i class="fas fa-user-circle"></i>
+                    <?php endif; ?>
                     <span class="d-none d-sm-inline"><?php echo e(Auth::user()->name); ?></span>
                     <span class="badge bg-info ms-1"><?php echo e(ucfirst(Auth::user()->role)); ?></span>
                     <i class="fas fa-chevron-down ms-2 small"></i>

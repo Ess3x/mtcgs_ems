@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>MTCGS-EMS - @yield('title')</title>
-    @vite(['resources/css/app.css', 'resources/js/app.js'])
+    <meta name="csrf-token" content="<?php echo e(csrf_token()); ?>">
+    <title>MTCGS-EMS - <?php echo $__env->yieldContent('title'); ?></title>
+    <?php echo app('Illuminate\Foundation\Vite')(['resources/css/app.css', 'resources/js/app.js']); ?>
     <style>
         /* ===== Base ===== */
         :root {
@@ -456,14 +456,14 @@
             .table-responsive { font-size: 0.85rem; }
         }
     </style>
-    @stack('styles')
+    <?php echo $__env->yieldPushContent('styles'); ?>
 </head>
 <body>
     <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu"><i class="fas fa-bars"></i></button>
 
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <img src="{{ asset('images/logo.jpg') }}" alt="MTCGS" onerror="this.style.display='none'">
+            <img src="<?php echo e(asset('images/logo.jpg')); ?>" alt="MTCGS" onerror="this.style.display='none'">
             <h5>MTCGS-EMS</h5>
             <small>v2.0</small>
         </div>
@@ -471,135 +471,135 @@
             <div class="nav-section">
                 <div class="nav-section-label">Overview</div>
                 <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle {{ request()->routeIs(['dashboard', 'analytics.*']) ? 'active' : '' }}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a class="nav-link dropdown-toggle <?php echo e(request()->routeIs(['dashboard', 'analytics.*']) ? 'active' : ''); ?>" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-tachometer-alt"></i> Dashboard
                     </a>
                     <div class="dropdown-menu">
-                        <a class="dropdown-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}">
+                        <a class="dropdown-item <?php echo e(request()->routeIs('dashboard') ? 'active' : ''); ?>" href="<?php echo e(route('dashboard')); ?>">
                             Dashboard
                         </a>
-                        <a class="dropdown-item {{ request()->routeIs('analytics.*') ? 'active' : '' }}" href="{{ route('analytics.index') }}">
+                        <a class="dropdown-item <?php echo e(request()->routeIs('analytics.*') ? 'active' : ''); ?>" href="<?php echo e(route('analytics.index')); ?>">
                             Analytics
                         </a>
                     </div>
                 </div>
             </div>
 
-            @if(Auth::user()->role === 'admin')
+            <?php if(Auth::user()->role === 'admin'): ?>
                 <div class="nav-section">
                     <div class="nav-section-label">Administration</div>
-                    @if(Auth::user()->admin_type === 'super_admin')
-                        <a class="nav-link {{ request()->routeIs('admin.branches*') ? 'active' : '' }}" href="{{ route('admin.branches.index') }}">
+                    <?php if(Auth::user()->admin_type === 'super_admin'): ?>
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.branches*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.branches.index')); ?>">
                             <i class="fas fa-building"></i> Branches
                         </a>
-                    @endif
-                    @if(Auth::user()->admin_type === 'super_admin')
-                        <a class="nav-link {{ request()->routeIs('admin.user-management*') ? 'active' : '' }}" href="{{ route('admin.user-management') }}">
+                    <?php endif; ?>
+                    <?php if(Auth::user()->admin_type === 'super_admin'): ?>
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.user-management*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.user-management')); ?>">
                             <i class="fas fa-users-cog"></i> Users & Admin
                         </a>
-                    @endif
-                    <a class="nav-link {{ request()->routeIs('admin.employees*') ? 'active' : '' }}" href="{{ route('admin.employees') }}">
+                    <?php endif; ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('admin.employees*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.employees')); ?>">
                         <i class="fas fa-users"></i> Employee
                     </a>
-                    @if(Auth::user()->admin_type === 'branch_admin' || Auth::user()->role === 'branch_head')
-                        <a class="nav-link {{ request()->routeIs('employee.dtr.*') ? 'active' : '' }}" href="{{ route('employee.dtr.index') }}">
+                    <?php if(Auth::user()->admin_type === 'branch_admin' || Auth::user()->role === 'branch_head'): ?>
+                        <a class="nav-link <?php echo e(request()->routeIs('employee.dtr.*') ? 'active' : ''); ?>" href="<?php echo e(route('employee.dtr.index')); ?>">
                             <i class="fas fa-clock"></i> My DTR
                         </a>
-                    @endif
-                    <a class="nav-link {{ request()->routeIs('admin.dtr.*') ? 'active' : '' }}" href="{{ route('admin.dtr.index') }}">
+                    <?php endif; ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('admin.dtr.*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.dtr.index')); ?>">
                         <i class="fas fa-clock"></i> DTR Management
-                        @php $pendingDTRs = \App\Models\DTR::where('status', 'submitted')->count(); @endphp
-                        @if($pendingDTRs > 0)
-                            <span class="badge bg-warning ms-auto">{{ $pendingDTRs }}</span>
-                        @endif
+                        <?php $pendingDTRs = \App\Models\DTR::where('status', 'submitted')->count(); ?>
+                        <?php if($pendingDTRs > 0): ?>
+                            <span class="badge bg-warning ms-auto"><?php echo e($pendingDTRs); ?></span>
+                        <?php endif; ?>
                     </a>
-                    <a class="nav-link {{ request()->routeIs('admin.payroll*') ? 'active' : '' }}" href="{{ route('admin.payroll.periods') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('admin.payroll*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.payroll.periods')); ?>">
                         <i class="fas fa-calculator"></i> Payroll
                     </a>
-                    <a class="nav-link {{ request()->routeIs('admin.shifts.*') ? 'active' : '' }}" href="{{ route('admin.shifts.index') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('admin.shifts.*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.shifts.index')); ?>">
                         <i class="fas fa-calendar-days"></i> Shifts & Schedules
                     </a>
-                    <a class="nav-link {{ request()->routeIs('employee.payslips') ? 'active' : '' }}" href="{{ route('employee.payslips') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('employee.payslips') ? 'active' : ''); ?>" href="<?php echo e(route('employee.payslips')); ?>">
                         <i class="fas fa-file-invoice-dollar"></i> Payslip
                     </a>
-                    <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('cash-advances.*') ? 'active' : ''); ?>" href="<?php echo e(route('cash-advances.index')); ?>">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
-                    @if(Auth::user()->admin_type === 'super_admin')
-                        <a class="nav-link {{ request()->routeIs('admin.permissions') ? 'active' : '' }}" href="{{ route('admin.permissions') }}">
+                    <?php if(Auth::user()->admin_type === 'super_admin'): ?>
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.permissions') ? 'active' : ''); ?>" href="<?php echo e(route('admin.permissions')); ?>">
                             <i class="fas fa-lock-open"></i> Admin Permissions
                         </a>
-                        <a class="nav-link {{ request()->routeIs('admin.authority') ? 'active' : '' }}" href="{{ route('admin.authority') }}">
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.authority') ? 'active' : ''); ?>" href="<?php echo e(route('admin.authority')); ?>">
                             <i class="fas fa-user-shield"></i> Employee Creation Authority
                         </a>
-                        <a class="nav-link {{ request()->routeIs('admin.audit-logs') ? 'active' : '' }}" href="{{ route('admin.audit-logs') }}">
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.audit-logs') ? 'active' : ''); ?>" href="<?php echo e(route('admin.audit-logs')); ?>">
                             <i class="fas fa-history"></i> Audit Trail
                         </a>
-                    @endif
-                    <a class="nav-link {{ request()->routeIs('admin.biometric') ? 'active' : '' }}" href="{{ route('admin.biometric') }}">
+                    <?php endif; ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('admin.biometric') ? 'active' : ''); ?>" href="<?php echo e(route('admin.biometric')); ?>">
                         <i class="fas fa-fingerprint"></i> Biometric Setup
                     </a>
-                    @if(Auth::user()->admin_type === 'super_admin')
-                        <a class="nav-link {{ request()->routeIs('admin.devices.*') ? 'active' : '' }}" href="{{ route('admin.devices.index') }}">
+                    <?php if(Auth::user()->admin_type === 'super_admin'): ?>
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.devices.*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.devices.index')); ?>">
                             <i class="fas fa-desktop"></i> Device Access
                         </a>
-                        <a class="nav-link {{ request()->routeIs('admin.branch-heads.*') ? 'active' : '' }}" href="{{ route('admin.branch-heads.index') }}">
+                        <a class="nav-link <?php echo e(request()->routeIs('admin.branch-heads.*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.branch-heads.index')); ?>">
                             <i class="fas fa-user-tie"></i> Branch Admins
                         </a>
-                    @endif
+                    <?php endif; ?>
                 </div>
-            @endif
+            <?php endif; ?>
 
-            @if(in_array(Auth::user()->role, ['finance_officer', 'finance_head'], true))
+            <?php if(in_array(Auth::user()->role, ['finance_officer', 'finance_head'], true)): ?>
                 <div class="nav-section">
                     <div class="nav-section-label">Finance</div>
-                    <a class="nav-link {{ request()->routeIs('finance.employees') ? 'active' : '' }}" href="{{ route('finance.employees') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('finance.employees') ? 'active' : ''); ?>" href="<?php echo e(route('finance.employees')); ?>">
                         <i class="fas fa-users"></i> Branch Employees
                     </a>
-                    <a class="nav-link {{ request()->routeIs('employee.dtr.*') ? 'active' : '' }}" href="{{ route('employee.dtr.index') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('employee.dtr.*') ? 'active' : ''); ?>" href="<?php echo e(route('employee.dtr.index')); ?>">
                         <i class="fas fa-clock"></i> My DTR
                     </a>
-                    <a class="nav-link {{ request()->routeIs('admin.payroll*') ? 'active' : '' }}" href="{{ route('admin.payroll.periods') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('admin.payroll*') ? 'active' : ''); ?>" href="<?php echo e(route('admin.payroll.periods')); ?>">
                         <i class="fas fa-calculator"></i> Payroll
                     </a>
-                    <a class="nav-link {{ request()->routeIs('employee.payslips') ? 'active' : '' }}" href="{{ route('employee.payslips') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('employee.payslips') ? 'active' : ''); ?>" href="<?php echo e(route('employee.payslips')); ?>">
                         <i class="fas fa-file-invoice-dollar"></i> Payslip
                     </a>
-                    <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('cash-advances.*') ? 'active' : ''); ?>" href="<?php echo e(route('cash-advances.index')); ?>">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
                 </div>
-            @endif
+            <?php endif; ?>
 
             <div class="nav-section">
                 <div class="nav-section-label">Workspace</div>
-                <a class="nav-link {{ request()->routeIs('leave.*') ? 'active' : '' }}" href="{{ route('leave.index') }}">
+                <a class="nav-link <?php echo e(request()->routeIs('leave.*') ? 'active' : ''); ?>" href="<?php echo e(route('leave.index')); ?>">
                     <i class="fas fa-calendar-alt"></i> Leave
                 </a>
 
-                <a class="nav-link {{ request()->routeIs('calendar.*') ? 'active' : '' }}" href="{{ route('calendar.index') }}">
+                <a class="nav-link <?php echo e(request()->routeIs('calendar.*') ? 'active' : ''); ?>" href="<?php echo e(route('calendar.index')); ?>">
                     <i class="fas fa-calendar-check"></i> Calendar
                 </a>
 
-                @if(in_array(Auth::user()->role, ['employee', 'branch_head'], true))
-                    <a class="nav-link {{ request()->routeIs('employee.dtr.*') ? 'active' : '' }}" href="{{ route('employee.dtr.index') }}">
+                <?php if(in_array(Auth::user()->role, ['employee', 'branch_head'], true)): ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('employee.dtr.*') ? 'active' : ''); ?>" href="<?php echo e(route('employee.dtr.index')); ?>">
                         <i class="fas fa-clock"></i> DTR
                     </a>
-                @endif
+                <?php endif; ?>
 
-                @if(Auth::user()->role === 'employee')
-                    <a class="nav-link {{ request()->routeIs('employee.payslips') ? 'active' : '' }}" href="{{ route('employee.payslips') }}">
+                <?php if(Auth::user()->role === 'employee'): ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('employee.payslips') ? 'active' : ''); ?>" href="<?php echo e(route('employee.payslips')); ?>">
                         <i class="fas fa-file-invoice-dollar"></i> My Payslips
                     </a>
-                    <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
+                    <a class="nav-link <?php echo e(request()->routeIs('cash-advances.*') ? 'active' : ''); ?>" href="<?php echo e(route('cash-advances.index')); ?>">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
-                @endif
+                <?php endif; ?>
             </div>
 
             <hr>
-            <form method="POST" action="{{ route('logout') }}">
-                @csrf
+            <form method="POST" action="<?php echo e(route('logout')); ?>">
+                <?php echo csrf_field(); ?>
                 <button type="submit" class="nav-link w-100 text-start" style="background: none; border: none; cursor: pointer;">
                     <i class="fas fa-sign-out-alt"></i> Logout
                 </button>
@@ -612,50 +612,50 @@
             <i class="fas fa-building"></i>
             <span class="brand-name brand-name-full">Mother Theresa Colegio Group of Schools</span>
             <span class="brand-name brand-name-short">MTCGS</span>
-            @if(session('user_branch'))
+            <?php if(session('user_branch')): ?>
                 <span class="badge bg-info ms-2 d-none d-md-inline-flex align-items-center gap-1">
-                    <i class="fas fa-location-dot"></i> {{ strtoupper(session('user_branch')) }} Branch
+                    <i class="fas fa-location-dot"></i> <?php echo e(strtoupper(session('user_branch'))); ?> Branch
                 </span>
-            @endif
+            <?php endif; ?>
         </div>
         <div class="navbar-actions">
-            @php
+            <?php
                 $headerNotifications = Auth::user()->notifications()->latest()->limit(5)->get();
                 $unreadNotificationCount = Auth::user()->unreadNotifications()->count();
-            @endphp
+            ?>
             <div class="dropdown">
                 <button class="btn btn-light btn-sm position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
                     <i class="fas fa-bell"></i>
-                    @if($unreadNotificationCount > 0)
-                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ $unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount }}</span>
-                    @endif
+                    <?php if($unreadNotificationCount > 0): ?>
+                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"><?php echo e($unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount); ?></span>
+                    <?php endif; ?>
                 </button>
                 <div class="dropdown-menu dropdown-menu-end p-0 notification-menu">
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
                         <strong>Notifications</strong>
-                        @if($unreadNotificationCount > 0)
-                            <form method="POST" action="{{ route('notifications.read-all') }}">
-                                @csrf
+                        <?php if($unreadNotificationCount > 0): ?>
+                            <form method="POST" action="<?php echo e(route('notifications.read-all')); ?>">
+                                <?php echo csrf_field(); ?>
                                 <button type="submit" class="btn btn-link btn-sm p-0">Mark all read</button>
                             </form>
-                        @endif
+                        <?php endif; ?>
                     </div>
-                    @forelse($headerNotifications as $notification)
-                        <a href="{{ route('notifications.read', $notification->id) }}" class="dropdown-item notification-item {{ $notification->read_at ? '' : 'unread' }} py-2">
-                            <strong class="d-block">{{ $notification->data['title'] ?? 'Notification' }}</strong>
-                            <span class="d-block">{{ $notification->data['message'] ?? '' }}</span>
-                            <small>{{ $notification->created_at->diffForHumans() }}</small>
+                    <?php $__empty_1 = true; $__currentLoopData = $headerNotifications; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $notification): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                        <a href="<?php echo e(route('notifications.read', $notification->id)); ?>" class="dropdown-item notification-item <?php echo e($notification->read_at ? '' : 'unread'); ?> py-2">
+                            <strong class="d-block"><?php echo e($notification->data['title'] ?? 'Notification'); ?></strong>
+                            <span class="d-block"><?php echo e($notification->data['message'] ?? ''); ?></span>
+                            <small><?php echo e($notification->created_at->diffForHumans()); ?></small>
                         </a>
-                    @empty
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
                         <div class="px-3 py-4 text-center text-muted">No notifications yet.</div>
-                    @endforelse
+                    <?php endif; ?>
                 </div>
             </div>
             <button id="themeToggle" class="btn btn-outline-secondary btn-sm theme-toggle">
                 <i id="themeIcon" class="fas fa-moon"></i>
                 <span id="themeLabel" class="theme-label">Dark Mode</span>
             </button>
-            @php
+            <?php
                 $headerProfile = Auth::user()->profile;
                 if (!$headerProfile && Auth::user()->role === 'admin') {
                     $headerProfile = Auth::user()->getAdminProfile();
@@ -664,24 +664,24 @@
                 if ($headerProfile?->profile_photo && \Illuminate\Support\Facades\Storage::disk('public')->exists($headerProfile->profile_photo)) {
                     $headerPhotoUrl = route('profile.photo', [strtolower(class_basename($headerProfile)), $headerProfile->id]) . '?v=' . $headerProfile->updated_at?->timestamp;
                 }
-            @endphp
+            ?>
             <div class="dropdown">
                 <button id="profileMenuToggle" class="btn btn-light btn-sm d-inline-flex align-items-center text-decoration-none" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Open account menu">
-                    @if($headerPhotoUrl)
-                        <img src="{{ $headerPhotoUrl }}" alt="Profile photo" class="rounded-circle" style="width: 28px; height: 28px; object-fit: cover;">
-                    @else
+                    <?php if($headerPhotoUrl): ?>
+                        <img src="<?php echo e($headerPhotoUrl); ?>" alt="Profile photo" class="rounded-circle" style="width: 28px; height: 28px; object-fit: cover;">
+                    <?php else: ?>
                         <i class="fas fa-user-circle"></i>
-                    @endif
-                    <span class="d-none d-sm-inline">{{ Auth::user()->name }}</span>
-                    <span class="badge bg-info ms-1">{{ ucfirst(Auth::user()->role) }}</span>
+                    <?php endif; ?>
+                    <span class="d-none d-sm-inline"><?php echo e(Auth::user()->name); ?></span>
+                    <span class="badge bg-info ms-1"><?php echo e(ucfirst(Auth::user()->role)); ?></span>
                     <i class="fas fa-chevron-down ms-2 small"></i>
                 </button>
                 <ul id="profileMenu" class="dropdown-menu dropdown-menu-end">
-                    <li><a class="dropdown-item" href="{{ route('profile') }}"><i class="fas fa-user me-2"></i> Profile</a></li>
+                    <li><a class="dropdown-item" href="<?php echo e(route('profile')); ?>"><i class="fas fa-user me-2"></i> Profile</a></li>
                     <li><hr class="dropdown-divider"></li>
                     <li>
-                        <form method="POST" action="{{ route('logout') }}">
-                            @csrf
+                        <form method="POST" action="<?php echo e(route('logout')); ?>">
+                            <?php echo csrf_field(); ?>
                             <button type="submit" class="dropdown-item text-danger">
                                 <i class="fas fa-sign-out-alt me-2"></i> Logout
                             </button>
@@ -694,21 +694,23 @@
 
     <div class="main-content" id="mainContent">
         <main>
-            @if(session('success'))
-                <div class="alert alert-success alert-dismissible fade show">{{ session('success') }}
+            <?php if(session('success')): ?>
+                <div class="alert alert-success alert-dismissible fade show"><?php echo e(session('success')); ?>
+
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-            @endif
-            @if(session('error'))
-                <div class="alert alert-danger alert-dismissible fade show">{{ session('error') }}
+            <?php endif; ?>
+            <?php if(session('error')): ?>
+                <div class="alert alert-danger alert-dismissible fade show"><?php echo e(session('error')); ?>
+
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 </div>
-            @endif
-            @yield('content')
+            <?php endif; ?>
+            <?php echo $__env->yieldContent('content'); ?>
         </main>
 
         <footer>
-            <small>&copy; {{ date('Y') }} MTCGS-EMS &nbsp;·&nbsp; Employee Management System with Biometric Attendance and Payroll Integration</small>
+            <small>&copy; <?php echo e(date('Y')); ?> MTCGS-EMS &nbsp;·&nbsp; Employee Management System with Biometric Attendance and Payroll Integration</small>
         </footer>
     </div>
 
@@ -769,6 +771,7 @@
         })();
     </script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    @stack('scripts')
+    <?php echo $__env->yieldPushContent('scripts'); ?>
 </body>
 </html>
+<?php /**PATH C:\Users\STUDENT\Desktop\mtcgs_ems\resources\views/layouts/app.blade.php ENDPATH**/ ?>

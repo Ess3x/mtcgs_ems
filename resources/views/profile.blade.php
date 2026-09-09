@@ -31,6 +31,29 @@
                     </h5>
                 </div>
                 <div class="card-body">
+                    @if(session('photo_updated'))
+                        <div class="alert alert-success py-2" role="alert">
+                            <i class="fas fa-check-circle me-1"></i>{{ session('photo_updated') }}
+                        </div>
+                    @endif
+                    @if($profile && $profile->profile_photo)
+                        <div class="text-center mb-3">
+                            <img src="{{ route('profile.photo', [strtolower(class_basename($profile)), $profile->id]) . '?v=' . $profile->updated_at?->timestamp }}" alt="Profile photo" class="rounded-circle border" style="width: 140px; height: 140px; object-fit: cover;">
+                        </div>
+                    @endif
+                    <form method="POST" action="{{ route('profile.photo.save') }}" enctype="multipart/form-data" class="mb-4">
+                        @csrf
+                        <label for="profile_photo" class="form-label">Profile Picture</label>
+                        <input type="file" name="profile_photo" id="profile_photo" class="form-control" accept="image/jpeg,image/png,image/webp" required>
+                        <small class="text-muted">JPG, PNG, or WEBP up to 2 MB.</small>
+                        @error('profile_photo')
+                            <div class="text-danger small mt-1">{{ $message }}</div>
+                        @enderror
+                        <button type="submit" class="btn btn-primary btn-sm mt-2">
+                            <i class="fas fa-upload me-1"></i>Save Profile Picture
+                        </button>
+                    </form>
+
                     <!-- User Account Info -->
                     <div class="row mb-4">
                         <div class="col-12">

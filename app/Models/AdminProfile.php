@@ -12,7 +12,7 @@ class AdminProfile extends Model
         'user_id', 'branch_id', 'employee_number', 'first_name', 'last_name', 'middle_name',
         'position', 'department', 'admin_level', 'can_verify_ids', 'can_create_employees', 'can_manage_accounts',
         'authority_granted_by', 'authority_granted_at', 'permissions', 'date_hired', 'basic_salary',
-        'contact_number', 'address', 'fingerprint_template', 'signature_path', 'is_fingerprint_registered',
+        'contact_number', 'address', 'profile_photo', 'fingerprint_template', 'signature_path', 'is_fingerprint_registered',
         'employee_profile_id'
     ];
     

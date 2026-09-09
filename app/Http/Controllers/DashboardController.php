@@ -501,6 +501,57 @@ class DashboardController extends Controller
         return back()->with('signature_updated', 'E-Signature saved successfully.');
     }
 
+    public function saveProfilePhoto(\Illuminate\Http\Request $request)
+    {
+        $profile = $request->user()->getEmployeeProfile();
+        if (!$profile && in_array($request->user()->role, ['finance_officer', 'finance_head'], true)) {
+            $profile = $request->user()->getFinanceProfile();
+        }
+        if (!$profile && $request->user()->role === 'admin') {
+            $profile = $request->user()->getAdminProfile();
+        }
+        abort_unless($profile, 403);
+
+        $validated = $request->validate([
+            'profile_photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $oldPath = $profile->profile_photo;
+        $extension = strtolower($validated['profile_photo']->extension());
+        $path = 'profile-photos/' . strtolower(class_basename($profile)) . '-' . $profile->id . '.' . $extension;
+
+        abort_unless(Storage::disk('public')->putFileAs('profile-photos', $validated['profile_photo'], basename($path)), 500, 'Unable to save profile photo.');
+        $profile->update(['profile_photo' => $path]);
+
+        if ($oldPath && $oldPath !== $path) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return back()->with('photo_updated', 'Profile photo updated successfully.');
+    }
+
+    public function profilePhoto(string $type, int $id)
+    {
+        $profileClass = match (strtolower($type)) {
+            'employeeprofile', 'employee' => EmployeeProfile::class,
+            'financeprofile', 'finance' => FinanceProfile::class,
+            'adminprofile', 'admin' => AdminProfile::class,
+            default => null,
+        };
+
+        abort_unless($profileClass, 404);
+
+        $profile = $profileClass::findOrFail($id);
+        $user = Auth::user();
+        abort_unless($profile->user_id === $user->id || $user->isAdmin(), 403);
+        abort_unless($profile->profile_photo && Storage::disk('public')->exists($profile->profile_photo), 404);
+
+        return response()->file(Storage::disk('public')->path($profile->profile_photo), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
+    }
+
     public function signature(EmployeeProfile $profile)
     {
         $user = Auth::user();
