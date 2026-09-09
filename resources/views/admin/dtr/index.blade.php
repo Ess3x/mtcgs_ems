@@ -124,6 +124,11 @@
                     <div class="d-flex align-items-center gap-2">
                         <span class="badge bg-warning text-dark py-2 px-3">Pending {{ $pendingCount }}</span>
                         <span class="badge bg-success py-2 px-3">Approved {{ $approvedDTRsCount }}</span>
+                        @if(Auth::user()->isBranchAdmin() || Auth::user()->isSuperAdmin())
+                            <a href="{{ route('admin.dtr.export-submitted') }}" class="btn btn-sm btn-success">
+                                <i class="fas fa-file-excel me-1"></i> Export Submitted DTRs
+                            </a>
+                        @endif
                     </div>
                 </div>
                 <div class="card-body p-3">

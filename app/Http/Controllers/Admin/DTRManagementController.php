@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Notifications\SystemNotification;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DTRManagementController
 {
@@ -116,6 +118,92 @@ class DTRManagementController
             'rejectedDTRs',
             'canApprove'
         ));
+    }
+
+    public function exportSubmittedExcel()
+    {
+        $user = Auth::user();
+
+        if (!$user->isBranchAdmin() && !$user->isSuperAdmin()) {
+            abort(403, 'Only Branch Heads and administrators can export submitted DTRs.');
+        }
+
+        $query = DTR::with('employeeProfile.branch')
+            ->where('status', 'submitted')
+            ->orderBy('period_start')
+            ->orderBy('employee_profile_id');
+
+        if ($user->isBranchAdmin()) {
+            $branchId = $user->getEffectiveBranchId();
+            $query->whereHas('employeeProfile', fn ($profileQuery) => $profileQuery->where('branch_id', $branchId));
+        }
+
+        $dtrs = $query->get();
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('Submitted DTRs');
+        $sheet->mergeCells('A1:Q1');
+        $sheet->setCellValue('A1', 'MOTHER THERESA COLEGIO GROUP OF SCHOOLS - SUBMITTED DTRs');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal('center');
+
+        $headers = [
+            'Employee', 'Employee No.', 'Branch', 'DTR Period', 'DTR Status', 'Date',
+            'AM In', 'AM Out', 'PM In', 'PM Out', 'Daily Hours', 'Late (min)',
+            'Overtime (hrs)', 'Daily Status', 'Correction Status', 'Correction Reason', 'Submitted At',
+        ];
+        $sheet->fromArray([$headers], null, 'A3');
+        $sheet->getStyle('A3:Q3')->getFont()->setBold(true);
+        $sheet->getStyle('A3:Q3')->getFill()->setFillType('solid')->getStartColor()->setRGB('D9EAF7');
+
+        $row = 4;
+        foreach ($dtrs as $dtr) {
+            $employee = $dtr->employeeProfile;
+            $logs = AttendanceLog::where('employee_profile_id', $dtr->employee_profile_id)
+                ->whereBetween('attendance_date', [$dtr->period_start, $dtr->period_end])
+                ->orderBy('attendance_date')
+                ->get();
+            $dtr->calculateTotals();
+            $summary = $dtr->getCalculationBreakdown();
+            $period = $dtr->period_start->format('M d, Y') . ' - ' . $dtr->period_end->format('M d, Y');
+
+            if ($logs->isEmpty()) {
+                $sheet->fromArray([[
+                    $employee?->first_name . ' ' . $employee?->last_name, $employee?->employee_number,
+                    $employee?->branch?->branch_name, $period, ucfirst($dtr->status), '--',
+                    '--', '--', '--', '--', 0, 0, 0, 'No attendance log',
+                    $dtr->status, $dtr->remarks ?? '', optional($dtr->created_at)?->format('M d, Y h:i A'),
+                ]], null, 'A' . $row++);
+                continue;
+            }
+
+            foreach ($logs as $log) {
+                $dailyHours = $log->am_in && $log->pm_out
+                    ? round($log->am_in->diffInMinutes($log->pm_out) / 60, 2)
+                    : 0;
+                $sheet->fromArray([[
+                    $employee?->first_name . ' ' . $employee?->last_name, $employee?->employee_number,
+                    $employee?->branch?->branch_name, $period, ucfirst($dtr->status), $log->attendance_date->format('M d, Y'),
+                    $log->am_in?->format('h:i A') ?? '--', $log->am_out?->format('h:i A') ?? '--',
+                    $log->pm_in?->format('h:i A') ?? '--', $log->pm_out?->format('h:i A') ?? '--',
+                    $dailyHours, (int) ($log->late_minutes ?? 0), (float) ($log->overtime_hours ?? 0),
+                    $log->getDtrStatus(), $log->override_status ?? 'none', $log->override_reason ?? '',
+                    optional($dtr->created_at)?->format('M d, Y h:i A'),
+                ]], null, 'A' . $row++);
+            }
+        }
+
+        foreach (range('A', 'Q') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+        $sheet->freezePane('A4');
+
+        $writer = new Xlsx($spreadsheet);
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, 'submitted-dtrs-' . now()->format('Ymd-His') . '.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     /**

@@ -297,6 +297,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
 // DTR Management Routes (Admin/Finance only)
 Route::middleware('auth')->prefix('admin')->name('admin.dtr.')->group(function () {
     Route::get('/dtr-management', [App\Http\Controllers\Admin\DTRManagementController::class, 'index'])->name('index');
+    Route::get('/dtr-management/export-submitted', [App\Http\Controllers\Admin\DTRManagementController::class, 'exportSubmittedExcel'])->name('export-submitted');
     Route::get('/dtr/{dtr}', [App\Http\Controllers\Admin\DTRManagementController::class, 'show'])->name('show');
     Route::post('/dtr/{dtr}/approve', [App\Http\Controllers\Admin\DTRManagementController::class, 'approve'])->name('approve');
     Route::post('/dtr/{dtr}/reject', [App\Http\Controllers\Admin\DTRManagementController::class, 'reject'])->name('reject');
