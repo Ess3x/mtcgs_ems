@@ -254,9 +254,9 @@
                             <div class="col-md-6">
                                 <form action="<?php echo e(route('admin.dtr.approve', $dtr->id)); ?>" method="POST" style="display: inline;">
                                     <?php echo csrf_field(); ?>
-                                    <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('<?php echo e($dtr->status === 'submitted' ? 'Approve this DTR and forward it to the System Administrator for review?' : 'Approve this DTR for final review approval?'); ?>')">
+                                    <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('<?php echo e($dtr->status === 'submitted' ? 'Approve this DTR and forward it to HR for review?' : 'Approve this DTR and forward it to the Finance Head for computation?'); ?>')">
                                         <i class="fas fa-check-circle"></i>
-                                        <?php echo e($dtr->status === 'submitted' ? 'Approve & Forward to System Admin' : 'Approve DTR'); ?>
+                                        <?php echo e($dtr->status === 'submitted' ? 'Approve & Forward to HR' : 'Submit to Finance Head'); ?>
 
                                     </button>
                                 </form>
@@ -294,6 +294,25 @@
                             <button type="submit" class="btn btn-danger">Reject & Send Back</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    <?php elseif($dtr->status === 'pending_finance_head' && Auth::user()->isFinanceHead()): ?>
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-calculator me-2"></i>Finance Head Computation</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-3">Review the attendance records and computed totals above, then finalize this DTR for payroll.</p>
+                        <form method="POST" action="<?php echo e(route('admin.dtr.compute', $dtr->id)); ?>">
+                            <?php echo csrf_field(); ?>
+                            <button type="submit" class="btn btn-primary btn-lg w-100" onclick="return confirm('Compute and finalize this DTR for payroll?')">
+                                <i class="fas fa-calculator me-2"></i> Compute DTR and Submit to Payroll
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

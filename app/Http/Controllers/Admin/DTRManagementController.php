@@ -49,14 +49,15 @@ class DTRManagementController
         } elseif ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
             $ownEmployeeId = $financeProfile?->employee_profile_id;
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
 
-            if ($user->isFinanceHead() && $financeProfile?->branch_id) {
-                $pendingQuery->where('status', 'approved');
+            if ($user->isFinanceHead()) {
+                $pendingQuery->where('status', 'pending_finance_head');
                 $pendingQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
-                    $query->where('branch_id', $financeProfile->branch_id);
+                    $query->where('branch_id', $financeProfile?->branch_id ?? Auth::user()->branch_id ?? 1);
                 });
                 $approvedQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
-                    $query->where('branch_id', $financeProfile->branch_id);
+                    $query->where('branch_id', $financeProfile?->branch_id ?? Auth::user()->branch_id ?? 1);
                 });
             } elseif (!$ownEmployeeId) {
                 $pendingQuery->whereRaw('0 = 1');
@@ -84,10 +85,11 @@ class DTRManagementController
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
             $ownEmployeeId = $financeProfile?->employee_profile_id;
-            if ($user->isFinanceHead() && $financeProfile?->branch_id) {
-                $totalDTRsQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $financeProfile->branch_id));
-                $approvedDTRsCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $financeProfile->branch_id));
-                $pendingCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $financeProfile->branch_id))->where('status', 'approved');
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+            if ($user->isFinanceHead()) {
+                $totalDTRsQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
+                $approvedDTRsCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
+                $pendingCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))->where('status', 'pending_finance_head');
             } elseif ($ownEmployeeId) {
                 $totalDTRsQuery->where('employee_profile_id', $ownEmployeeId);
                 $approvedDTRsCountQuery->where('employee_profile_id', $ownEmployeeId);
@@ -129,7 +131,7 @@ class DTRManagementController
         }
 
         $query = DTR::with('employeeProfile.branch')
-            ->whereIn('status', ['submitted', 'pending_system_admin'])
+            ->whereIn('status', ['submitted', 'pending_system_admin', 'pending_finance_head'])
             ->orderBy('period_start')
             ->orderBy('employee_profile_id');
 
@@ -138,7 +140,21 @@ class DTRManagementController
             $query->whereHas('employeeProfile', fn ($profileQuery) => $profileQuery->where('branch_id', $branchId));
         }
 
-        $dtrs = $query->get();
+        $dtrs = $query->get()
+            ->groupBy(fn (DTR $dtr) => implode('|', [
+                $dtr->employee_profile_id,
+                $dtr->period_start->toDateString(),
+                $dtr->period_end->toDateString(),
+            ]))
+            ->map(function ($duplicates) {
+                return $duplicates
+                    ->sortByDesc(fn (DTR $dtr) => [
+                        $dtr->status === 'pending_system_admin' ? 2 : 1,
+                        $dtr->id,
+                    ])
+                    ->first();
+            })
+            ->values();
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Submitted DTRs');
@@ -235,6 +251,51 @@ class DTRManagementController
         return back()->with('success', $dtrs->count() . ' DTR(s) and the combined attendance report were submitted to HR for review.');
     }
 
+    public function submitAllToFinanceHead()
+    {
+        $user = Auth::user();
+        abort_unless($user->isSuperAdmin(), 403, 'Only HR can submit DTRs to the Finance Head.');
+
+        $dtrs = DTR::with('employeeProfile')
+            ->where('status', 'pending_system_admin')
+            ->get();
+
+        if ($dtrs->isEmpty()) {
+            return back()->with('error', 'There are no DTRs awaiting HR review.');
+        }
+
+        $dtrs->each(function (DTR $dtr) {
+            $dtr->update(['status' => 'pending_finance_head']);
+        });
+
+        $dtrs->each(fn (DTR $dtr) => $this->notifyFinanceHeads($dtr));
+
+        return back()->with('success', $dtrs->count() . ' DTR(s) and the combined Excel report were submitted to the Finance Head.');
+    }
+
+    public function computeDtr($dtrId)
+    {
+        $user = Auth::user();
+        abort_unless($user->isFinanceHead(), 403, 'Only the Finance Head can compute this DTR.');
+
+        $dtr = DTR::with('employeeProfile')->findOrFail($dtrId);
+        $financeProfile = $user->getFinanceProfile();
+        $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+        abort_unless($financeProfile && $dtr->employeeProfile?->branch_id === $branchId, 403);
+        abort_unless($dtr->status === 'pending_finance_head', 422, 'This DTR is not awaiting Finance Head review.');
+
+        $dtr->calculateTotals();
+        $dtr->approve($user->id, 'finance_head');
+        $dtr->employeeProfile?->user?->notify(new SystemNotification(
+            'DTR computed by Finance Head',
+            'Your DTR was reviewed and computed by the Finance Head.',
+            'dtr_computed',
+            route('employee.dtr.show', $dtr->id)
+        ));
+
+        return back()->with('success', 'DTR attendance and payroll totals computed successfully.');
+    }
+
     /**
      * Show DTR details for approval
      */
@@ -250,7 +311,8 @@ class DTRManagementController
 
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
-            $isOutsideBranch = !$financeProfile || $dtr->employeeProfile?->branch_id !== $financeProfile->branch_id;
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+            $isOutsideBranch = !$financeProfile || $dtr->employeeProfile?->branch_id !== $branchId;
             $canView = $user->isFinanceHead()
                 ? !$isOutsideBranch
                 : $dtr->employee_profile_id === $financeProfile?->employee_profile_id;
@@ -350,6 +412,7 @@ class DTRManagementController
         }
 
         $dtr->approve($user->id, 'super_admin');
+        $this->notifyFinanceHeads($dtr);
 
         $dtr->employeeProfile?->user?->notify(new SystemNotification(
             'DTR approved',
@@ -526,6 +589,19 @@ class DTRManagementController
                 'DTR needs final approval',
                 'A DTR has been approved by the Branch Head and is waiting for final review.',
                 'dtr_pending_system',
+                route('admin.dtr.show', $dtr->id)
+            )));
+    }
+
+    private function notifyFinanceHeads(DTR $dtr): void
+    {
+        User::where('role', 'finance_head')
+            ->where('is_active', true)
+            ->get()
+            ->each(fn (User $financeHead) => $financeHead->notify(new SystemNotification(
+                'DTR ready for Finance Head computation',
+                'A DTR and the combined Excel report were submitted by HR for your attendance review and computation.',
+                'dtr_pending_finance_head',
                 route('admin.dtr.show', $dtr->id)
             )));
     }

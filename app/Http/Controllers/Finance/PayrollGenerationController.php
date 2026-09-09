@@ -41,10 +41,11 @@ class PayrollGenerationController extends Controller
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
             $ownEmployeeId = $financeProfile?->employee_profile_id;
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
 
-            if ($user->isFinanceHead() && $financeProfile?->branch_id) {
-                $approvedDTRs->whereHas('employeeProfile', function ($query) use ($financeProfile) {
-                    $query->where('branch_id', $financeProfile->branch_id);
+            if ($user->isFinanceHead()) {
+                $approvedDTRs->whereHas('employeeProfile', function ($query) use ($branchId) {
+                    $query->where('branch_id', $branchId);
                 });
             } elseif (!$ownEmployeeId) {
                 $approvedDTRs->whereRaw('0 = 1');
@@ -83,7 +84,11 @@ class PayrollGenerationController extends Controller
 
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
-            if (!$financeProfile || $dtr->employee_profile_id !== $financeProfile->employee_profile_id) {
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+            $canReview = $user->isFinanceHead()
+                ? $dtr->employeeProfile?->branch_id === $branchId
+                : $dtr->employee_profile_id === $financeProfile?->employee_profile_id;
+            if (!$canReview) {
                 return redirect('/dashboard')->with('error', 'You can only review your own DTR records.');
             }
         }
@@ -108,7 +113,8 @@ class PayrollGenerationController extends Controller
 
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
-            $isOutsideBranch = $financeProfile && $dtr->employeeProfile?->branch_id !== $financeProfile->branch_id;
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+            $isOutsideBranch = $dtr->employeeProfile?->branch_id !== $branchId;
             if (!$financeProfile || (!$user->isFinanceHead() && $dtr->employee_profile_id !== $financeProfile->employee_profile_id) || $isOutsideBranch) {
                 return redirect('/dashboard')->with('error', 'You can only generate payroll from DTRs in your assigned branch.');
             }

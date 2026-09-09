@@ -395,6 +395,11 @@ class DTR extends Model
         return $this->status === 'pending_system_admin';
     }
 
+    public function isVisibleToFinanceHead()
+    {
+        return $this->status === 'pending_finance_head';
+    }
+
     /**
      * Whether this DTR should be visible to finance staff for payroll preparation.
      */
@@ -424,6 +429,8 @@ class DTR extends Model
         if ($this->status === 'submitted' && $approverRole === 'branch_admin') {
             $this->status = 'pending_system_admin';
         } elseif ($this->status === 'pending_system_admin' && in_array($approverRole, ['super_admin', 'system_admin'], true)) {
+            $this->status = 'pending_finance_head';
+        } elseif ($this->status === 'pending_finance_head' && $approverRole === 'finance_head') {
             $this->status = 'approved';
         } elseif ($this->status !== 'approved') {
             $this->status = 'approved';

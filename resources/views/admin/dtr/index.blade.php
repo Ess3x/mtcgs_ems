@@ -136,6 +136,14 @@
                                     </button>
                                 </form>
                             @endif
+                            @if(Auth::user()->isSuperAdmin() && $pendingCount > 0)
+                                <form method="POST" action="{{ route('admin.dtr.submit-all-to-finance-head') }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Submit all HR-reviewed DTRs and the combined Excel report to the Finance Head?')">
+                                        <i class="fas fa-paper-plane me-1"></i> Submit All to FH
+                                    </button>
+                                </form>
+                            @endif
                         @endif
                     </div>
                 </div>
