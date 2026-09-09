@@ -297,6 +297,12 @@
                 min-width: 620px;
             }
         }
+
+        .dtr-inline-time {
+            width: 112px;
+            font-size: 0.8rem;
+            margin: 0 auto;
+        }
     </style>
     <div class="row">
         <div class="col-12">
@@ -339,14 +345,38 @@
                                             $rowClass = $isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : ($isWeekend ? 'dtr-empty' : ($isNoRecordYet ? 'dtr-empty' : '')))))));
                                             $displayStatus = $isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isNoRecordYet ? '' : 'Present'))))));
                                             $isEarlyOut = !empty($day['pm_out']) && $day['pm_out'] !== '--' && strtotime($day['pm_out']) < strtotime('17:00');
+                                            $canRequestCorrection = $day['log']
+                                                && in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out'], true)
+                                                && !in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true);
+                                            $correctionFormId = 'attendance-correction-' . ($day['log']->id ?? $day['date']->format('Ymd'));
                                         @endphp
                                         <tr class="{{ $rowClass }}">
                                             <td>
                                                 <strong>{{ $day['date']->format('M d, Y') }}</strong><br>
                                                 <small class="text-muted">{{ $day['day_name'] }}</small>
                                             </td>
-                                            <td class="text-center {{ $isLateTimeIn && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">{{ !$isLeave && !$isLWOP ? ($day['am_in'] ?? '') : '--' }}</td>
-                                            <td class="text-center {{ $isEarlyOut && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">{{ !$isLeave && !$isLWOP ? ($day['pm_out'] ?? '') : '--' }}</td>
+                                            <td class="text-center {{ $isLateTimeIn && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
+                                                @if (!$isLeave && !$isLWOP)
+                                                    @if ($canRequestCorrection && $day['log']->am_in && $isLateTimeIn)
+                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_time_in" class="form-control form-control-sm dtr-inline-time" value="{{ $day['log']->am_in?->format('H:i') }}" aria-label="Corrected time-in">
+                                                    @else
+                                                        <span>{{ $day['am_in'] ?? '--' }}</span>
+                                                    @endif
+                                                @else
+                                                    --
+                                                @endif
+                                            </td>
+                                            <td class="text-center {{ $isEarlyOut && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
+                                                @if (!$isLeave && !$isLWOP)
+                                                    @if ($canRequestCorrection && $day['log']->pm_out && $isEarlyOut)
+                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_time_out" class="form-control form-control-sm dtr-inline-time" value="{{ $day['log']->pm_out?->format('H:i') }}" aria-label="Corrected time-out">
+                                                    @else
+                                                        <span>{{ $day['pm_out'] ?? '--' }}</span>
+                                                    @endif
+                                                @else
+                                                    --
+                                                @endif
+                                            </td>
                                             <td class="text-center" style="
                                                 @if ($isLWOP)
                                                     background-color: #ff0000; color: #B4E1EB; font-weight: 700;
@@ -386,30 +416,15 @@
                                                 @else
                                                     Present
                                                 @endif
-                                                @php
-                                                    $legacyApprovedWithoutCorrection = $day['log']
-                                                        && $day['log']->override_status === 'approved'
-                                                        && !$day['log']->corrected_time_in
-                                                        && $day['log']->am_in
-                                                        && $day['log']->am_in->format('H:i:s') > '07:00:00';
-                                                @endphp
-                                                @if ($day['log'] && (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection) && (!in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true) || $legacyApprovedWithoutCorrection))
-                                                    <form method="POST" action="{{ route('employee.dtr.attendance.adjust-present', $day['log']->id) }}" class="mt-2">
+                                                @if ($canRequestCorrection)
+                                                    <button type="button" class="btn btn-sm btn-outline-dark dtr-show-correction" data-target="{{ $correctionFormId }}">
+                                                        Request Attendance Correction
+                                                    </button>
+                                                    <form id="{{ $correctionFormId }}" method="POST" action="{{ route('employee.dtr.attendance.adjust-present', $day['log']->id) }}" class="mt-2 d-none dtr-correction-form">
                                                         @csrf
-                                                        @if (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
-                                                            <label class="small d-block mb-1">Correct time-in (optional)</label>
-                                                            <input type="time" name="corrected_time_in" class="form-control form-control-sm mb-1" value="{{ $day['log']->am_in?->format('H:i') }}">
-                                                        @endif
-                                                        @if ($attendanceStatus === 'Half Day')
-                                                            <label class="small d-block mb-1">Correct PM time-in (optional)</label>
-                                                            <input type="time" name="corrected_pm_in" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_in?->format('H:i') }}">
-                                                        @endif
-                                                        @if (in_array($attendanceStatus, ['Early Out', 'Late / Early Out', 'Half Day'], true))
-                                                            <label class="small d-block mb-1">Correct time-out (optional)</label>
-                                                            <input type="time" name="corrected_time_out" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_out?->format('H:i') }}">
-                                                        @endif
                                                         <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Reason" required minlength="5">
-                                                        <button type="submit" class="btn btn-sm btn-outline-dark">Request Attendance Correction</button>
+                                                        <button type="submit" class="btn btn-sm btn-outline-dark">Submit Correction Request</button>
+                                                        <button type="button" class="btn btn-sm btn-link dtr-hide-correction">Hide</button>
                                                     </form>
                                                 @elseif ($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true))
                                                     <small class="d-block text-muted mt-1">Adjustment pending approval</small>
@@ -448,4 +463,22 @@
         </div>
     @endif
 </div>
+<script>
+    document.querySelectorAll('.dtr-show-correction').forEach((button) => {
+        button.addEventListener('click', () => {
+            const form = document.getElementById(button.dataset.target);
+            form?.classList.remove('d-none');
+            button.classList.add('d-none');
+            form?.querySelector('[name="reason"]')?.focus();
+        });
+    });
+
+    document.querySelectorAll('.dtr-hide-correction').forEach((button) => {
+        button.addEventListener('click', () => {
+            const form = button.closest('.dtr-correction-form');
+            form?.classList.add('d-none');
+            form?.previousElementSibling?.classList.remove('d-none');
+        });
+    });
+</script>
 @endsection

@@ -470,19 +470,25 @@
         <nav class="sidebar-nav nav flex-column">
             <div class="nav-section">
                 <div class="nav-section-label">Overview</div>
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?php echo e(request()->routeIs(['dashboard', 'analytics.*']) ? 'active' : ''); ?>" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <?php if(Auth::user()->role === 'employee'): ?>
+                    <a class="nav-link <?php echo e(request()->routeIs('dashboard') ? 'active' : ''); ?>" href="<?php echo e(route('dashboard')); ?>">
                         <i class="fas fa-tachometer-alt"></i> Dashboard
                     </a>
-                    <div class="dropdown-menu">
-                        <a class="dropdown-item <?php echo e(request()->routeIs('dashboard') ? 'active' : ''); ?>" href="<?php echo e(route('dashboard')); ?>">
-                            Dashboard
+                <?php else: ?>
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle <?php echo e(request()->routeIs(['dashboard', 'analytics.*']) ? 'active' : ''); ?>" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-tachometer-alt"></i> Dashboard
                         </a>
-                        <a class="dropdown-item <?php echo e(request()->routeIs('analytics.*') ? 'active' : ''); ?>" href="<?php echo e(route('analytics.index')); ?>">
-                            Analytics
-                        </a>
+                        <div class="dropdown-menu">
+                            <a class="dropdown-item <?php echo e(request()->routeIs('dashboard') ? 'active' : ''); ?>" href="<?php echo e(route('dashboard')); ?>">
+                                Dashboard
+                            </a>
+                            <a class="dropdown-item <?php echo e(request()->routeIs('analytics.*') ? 'active' : ''); ?>" href="<?php echo e(route('analytics.index')); ?>">
+                                Analytics
+                            </a>
+                        </div>
                     </div>
-                </div>
+                <?php endif; ?>
             </div>
 
             <?php if(Auth::user()->role === 'admin'): ?>

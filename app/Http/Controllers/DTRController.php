@@ -384,16 +384,11 @@ class DTRController extends Controller
             return back()->with('error', 'Please enter the corrected attendance time before submitting.');
         }
 
-        $legacyApprovedWithoutCorrection = $attendance->override_status === 'approved'
-            && !$attendance->corrected_time_in
-            && $attendance->am_in
-            && $attendance->am_in->format('H:i:s') > '07:00:00';
-
-        if (!$legacyApprovedWithoutCorrection && !in_array($dtrStatus, ['Late', 'Late / Early Out', 'Early Out', 'Half Day'], true)) {
-            return back()->with('error', 'Only late attendance can request a Present adjustment.');
+        if (!in_array($dtrStatus, ['Late', 'Late / Early Out', 'Early Out'], true)) {
+            return back()->with('error', 'Only late or early-out attendance can request a Present adjustment.');
         }
 
-        if (!$legacyApprovedWithoutCorrection && in_array($attendance->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true)) {
+        if (in_array($attendance->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true)) {
             return back()->with('error', 'This attendance adjustment is already active or approved.');
         }
 
