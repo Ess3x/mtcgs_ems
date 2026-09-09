@@ -495,7 +495,7 @@ class DashboardController extends Controller
         abort_unless($imageData !== false && strlen($imageData) <= 2 * 1024 * 1024, 422, 'Invalid signature image.');
 
         $path = 'signatures/' . strtolower(class_basename($profile)) . '-' . $profile->id . '.png';
-        Storage::disk('public')->put($path, $imageData);
+        abort_unless(Storage::disk('public')->put($path, $imageData), 500, 'Unable to save signature image.');
         $profile->update(['signature_path' => $path]);
 
         return back()->with('signature_updated', 'E-Signature saved successfully.');
@@ -520,7 +520,10 @@ class DashboardController extends Controller
 
         abort_unless($path && Storage::disk('public')->exists($path), 404);
 
-        return response()->file(Storage::disk('public')->path($path));
+        return response()->file(Storage::disk('public')->path($path), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function profileSignature(string $type, int $id)
@@ -548,7 +551,10 @@ class DashboardController extends Controller
 
         abort_unless($path && Storage::disk('public')->exists($path), 404);
 
-        return response()->file(Storage::disk('public')->path($path));
+        return response()->file(Storage::disk('public')->path($path), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function profileDocument()

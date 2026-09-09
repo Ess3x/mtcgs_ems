@@ -380,7 +380,7 @@ unset($__errorArgs, $__bag); ?>
                     ?>
                     <?php if($hasSavedSignature): ?>
                         <div class="border rounded p-2 mb-3 text-center">
-                            <img src="<?php echo e($profile instanceof \App\Models\EmployeeProfile ? route('profile.signature', $profile->id) : route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id])); ?>" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
+                            <img src="<?php echo e(($profile instanceof \App\Models\EmployeeProfile ? route('profile.signature', $profile->id) : route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id])) . '?v=' . $profile->updated_at?->timestamp); ?>" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
                             <div class="small text-muted mt-1">Saved signature</div>
                         </div>
                     <?php endif; ?>
