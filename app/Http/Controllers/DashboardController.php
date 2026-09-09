@@ -396,7 +396,9 @@ class DashboardController extends Controller
             ->where('status', 'pending')->count();
         
         $recentAttendance = AttendanceLog::where('employee_profile_id', $profile->id)
-            ->latest()->limit(10)->get();
+            ->whereDate('attendance_date', today())
+            ->latest()
+            ->get();
 
         $stats = [
             'days_present' => AttendanceLog::where('employee_profile_id', $profile->id)

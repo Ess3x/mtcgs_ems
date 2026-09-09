@@ -161,7 +161,7 @@
     <div class="card">
         <div class="card-header d-flex align-items-center gap-2">
             <i class="fas fa-history text-primary"></i>
-            <span>My Attendance History</span>
+            <span>Today's Attendance</span>
         </div>
         <div class="table-responsive" style="border: 0; border-radius: 0 0 14px 14px;">
             <table class="table table-hover align-middle mb-0">
