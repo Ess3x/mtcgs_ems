@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\Device;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class DeviceController extends Controller
 {
@@ -45,6 +46,8 @@ class DeviceController extends Controller
 
         $request->validate([
             'mac_address' => ['required', 'string', 'max:20', 'regex:/^(?:[A-Fa-f0-9]{2}[:-]?){5}[A-Fa-f0-9]{2}$/', 'unique:devices,mac_address'],
+            'serial_number' => ['required', 'string', 'max:100', 'unique:devices,serial_number'],
+            'allowed_mac_addresses' => ['nullable', 'array'],
             'device_name' => 'required|string|max:255',
             'device_type' => 'required|in:biometric_scanner,kiosk,computer',
             'branch_id' => 'nullable|exists:branches,id',
@@ -53,8 +56,20 @@ class DeviceController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $allowedMacs = $request->input('allowed_mac_addresses', []);
+        $normalizedAllowedMacs = [];
+        foreach ((array) $allowedMacs as $mac) {
+            $normalized = Device::normalizeMacAddress($mac);
+            if ($normalized !== '') {
+                $normalizedAllowedMacs[] = $normalized;
+            }
+        }
+        $normalizedAllowedMacs = array_values(array_unique($normalizedAllowedMacs));
+
         Device::create([
             'mac_address' => Device::normalizeMacAddress($request->mac_address),
+            'serial_number' => Device::normalizeSerialNumber($request->serial_number),
+            'allowed_mac_addresses' => $normalizedAllowedMacs ? json_encode($normalizedAllowedMacs) : null,
             'device_name' => $request->device_name,
             'device_type' => $request->device_type,
             'branch_id' => $request->branch_id,
@@ -83,12 +98,26 @@ class DeviceController extends Controller
             'device_name' => 'required|string|max:255',
             'device_type' => 'required|in:biometric_scanner,kiosk,computer',
             'branch_id' => 'nullable|exists:branches,id',
+            'serial_number' => ['nullable', 'string', 'max:100', Rule::unique('devices', 'serial_number')->ignore($device->id)],
+            'allowed_mac_addresses' => ['nullable', 'array'],
             'location' => 'nullable|string|max:255',
             'status' => 'required|in:active,inactive,maintenance',
             'notes' => 'nullable|string',
         ]);
 
+        $allowedMacs = $request->input('allowed_mac_addresses', []);
+        $normalizedAllowedMacs = [];
+        foreach ((array) $allowedMacs as $mac) {
+            $normalized = Device::normalizeMacAddress($mac);
+            if ($normalized !== '') {
+                $normalizedAllowedMacs[] = $normalized;
+            }
+        }
+        $normalizedAllowedMacs = array_values(array_unique($normalizedAllowedMacs));
+
         $device->update([
+            'serial_number' => $request->filled('serial_number') ? Device::normalizeSerialNumber($request->serial_number) : $device->serial_number,
+            'allowed_mac_addresses' => $normalizedAllowedMacs ? json_encode($normalizedAllowedMacs) : null,
             'device_name' => $request->device_name,
             'device_type' => $request->device_type,
             'branch_id' => $request->branch_id,

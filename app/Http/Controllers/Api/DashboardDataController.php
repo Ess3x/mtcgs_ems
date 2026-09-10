@@ -55,6 +55,7 @@ class DashboardDataController extends Controller
         ];
         
         $recentAttendance = AttendanceLog::where('employee_profile_id', $profile->id)
+            ->whereDate('attendance_date', today())
             ->orderBy('attendance_date', 'desc')
             ->limit(10)
             ->get()
@@ -113,6 +114,7 @@ class DashboardDataController extends Controller
         
         // Recent attendance with employee details
         $recentAttendance = AttendanceLog::with('employeeProfile')
+            ->whereDate('attendance_date', today())
             ->latest()
             ->limit(15)
             ->get()

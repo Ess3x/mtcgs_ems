@@ -8,6 +8,7 @@ use App\Models\FinanceProfile;
 use App\Models\AdminProfile;
 use App\Models\AttendanceLog;
 use App\Models\Device;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -140,25 +141,154 @@ class BiometricController extends Controller
         return response()->json(['error' => 'Finance profile not found'], 404);
     }
     
+    private function logBiometricAttempt(Request $request, string $action, array $details = [], ?string $error = null): void
+    {
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => $action,
+            'auditable_type' => 'biometric_request',
+            'auditable_id' => $request->input('employee_id') ?? $request->input('employee_number') ?? null,
+            'old_values' => $error ? ['error' => $error] : null,
+            'new_values' => [
+                'employee_number' => $request->input('employee_number'),
+                'device_serial' => $request->input('device_serial'),
+                'wifi_mac' => $request->input('wifi_mac') ?: $request->input('mac_address'),
+                'laptop_mac' => $request->input('laptop_mac'),
+                'timestamp' => $request->input('timestamp'),
+                'nonce' => $request->input('nonce'),
+                'details' => $details,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'url' => $request->fullUrl(),
+        ]);
+    }
+
+    private function verifyRequestSignature(Request $request): bool
+    {
+        if (!$request->filled('signature')) {
+            return true;
+        }
+
+        $secret = config('app.biometric_device_secret') ?? env('BIOMETRIC_DEVICE_SECRET') ?? env('APP_KEY');
+        if (blank($secret)) {
+            return true;
+        }
+
+        $payload = [
+            $request->input('employee_id'),
+            $request->input('employee_number'),
+            $request->input('device_serial'),
+            $request->input('wifi_mac'),
+            $request->input('laptop_mac'),
+            $request->input('mac_address'),
+            $request->input('timestamp'),
+            $request->input('nonce'),
+        ];
+
+        $signature = strtolower(trim((string) $request->input('signature')));
+        $expected = hash_hmac('sha256', implode('|', $payload), $secret);
+
+        return hash_equals($expected, $signature);
+    }
+
+    private function validateTimestamp(Request $request): ?string
+    {
+        if (!$request->filled('timestamp')) {
+            return null;
+        }
+
+        try {
+            $timestamp = \Carbon\Carbon::parse($request->input('timestamp'));
+            $diffSeconds = abs($timestamp->diffInSeconds(now(), false));
+
+            if ($diffSeconds > 300) {
+                return 'Timestamp is too old or too far in the future.';
+            }
+        } catch (\Throwable $exception) {
+            return 'Invalid timestamp format.';
+        }
+
+        return null;
+    }
+
+    private function validateDeviceIdentity(Request $request): ?array
+    {
+        $deviceSerial = $request->input('device_serial');
+        $wifiMac = $request->input('wifi_mac') ?: $request->input('mac_address');
+        $laptopMac = $request->input('laptop_mac');
+        $deviceId = $request->input('device_id');
+
+        if (!$request->filled('device_serial') && !filled($wifiMac) && !filled($laptopMac) && empty($deviceId)) {
+            return ['error' => 'Biometric device identity is required for attendance verification.', 'code' => 401];
+        }
+
+        $timestampError = $this->validateTimestamp($request);
+        if ($timestampError) {
+            $this->logBiometricAttempt($request, 'biometric_timestamp_invalid', [], $timestampError);
+            return ['error' => $timestampError, 'code' => 401];
+        }
+
+        if ($request->filled('signature') && !$this->verifyRequestSignature($request)) {
+            $this->logBiometricAttempt($request, 'biometric_signature_invalid', [], 'Invalid biometric request signature.');
+            return ['error' => 'Invalid biometric request signature.', 'code' => 401];
+        }
+
+        $device = null;
+        if ($request->filled('device_serial')) {
+            $device = Device::getBySerialNumber($deviceSerial);
+            if (!$device) {
+                $this->logBiometricAttempt($request, 'biometric_device_serial_invalid', [], 'Device serial not registered or inactive.');
+                return ['error' => 'Device serial not registered or inactive.', 'code' => 401];
+            }
+        }
+
+        if ($device === null && $request->filled('device_id')) {
+            $device = Device::find($request->input('device_id'));
+        }
+
+        if ($device) {
+            $candidateMacs = array_filter([
+                $request->input('mac_address'),
+                $request->input('wifi_mac'),
+                $request->input('laptop_mac'),
+            ]);
+
+            foreach ($candidateMacs as $candidateMac) {
+                if (!$device->isMacAllowed($candidateMac)) {
+                    $this->logBiometricAttempt($request, 'biometric_mac_invalid', ['device_id' => $device->id], 'This device MAC is not authorized for this biometric terminal.');
+                    return ['error' => 'This device MAC is not authorized for this biometric terminal.', 'code' => 401];
+                }
+            }
+        } elseif ($request->filled('mac_address') || $request->filled('wifi_mac') || $request->filled('laptop_mac')) {
+            $macAddress = Device::normalizeMacAddress($request->input('mac_address') ?: $request->input('wifi_mac'));
+            $device = Device::getByMacAddress($macAddress);
+            if (!$device) {
+                $this->logBiometricAttempt($request, 'biometric_mac_invalid', [], 'Device not authorized. MAC address not registered.');
+                return ['error' => 'Device not authorized. MAC address not registered.', 'code' => 401];
+            }
+        }
+
+        return ['device' => $device ?? null];
+    }
+
     // Process attendance for admin (same as employee)
     public function processAdminAttendance(Request $request)
     {
         $request->validate([
             'fingerprint_data' => 'required|string',
+            'device_serial' => 'nullable|string',
             'mac_address' => 'nullable|string',
+            'wifi_mac' => 'nullable|string',
+            'laptop_mac' => 'nullable|string',
+            'timestamp' => 'nullable|string',
+            'nonce' => 'nullable|string',
+            'signature' => 'nullable|string',
         ]);
-        
-        // Validate MAC address if provided
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            
-            if (!$device) {
-                return response()->json([
-                    'error' => 'Device not authorized. MAC address not registered.',
-                    'mac_address' => $macAddress,
-                ], 401);
-            }
+
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['error' => $deviceValidation['error']], $deviceValidation['code']);
         }
         
         // Find admin by fingerprint
@@ -627,6 +757,27 @@ class BiometricController extends Controller
         return base64_encode($this->fingerprintBytes($value));
     }
 
+    private function preventDuplicateAction(AttendanceLog $attendance, string $action, string $message): ?string
+    {
+        if ($action === 'AM In' && !empty($attendance->am_in)) {
+            return 'AM In already recorded for today.';
+        }
+
+        if ($action === 'AM Out' && !empty($attendance->am_out)) {
+            return 'AM Out already recorded for today.';
+        }
+
+        if ($action === 'PM In' && !empty($attendance->pm_in)) {
+            return 'PM In already recorded for today.';
+        }
+
+        if ($action === 'PM Out' && !empty($attendance->pm_out)) {
+            return 'PM Out already recorded for today.';
+        }
+
+        return null;
+    }
+
     private function attendanceBlockedReason($employee, $date): ?string
     {
         $day = $date instanceof \Carbon\Carbon
@@ -732,6 +883,12 @@ class BiometricController extends Controller
         $action = '';
         
         if (!$attendance->am_in && $currentHour >= 6 && $currentHour < 12) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'AM In', 'AM In');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->am_in = $now;
             $standardIn = $this->scheduledTime($employee, 'start_time', 7);
             if ($now >= $standardIn) {
@@ -746,16 +903,34 @@ class BiometricController extends Controller
             $action = 'AM In';
         }
         elseif ($attendance->am_in && !$attendance->am_out && $currentHour >= 12 && $currentHour < 14) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'AM Out', 'AM Out');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->am_out = $now;
             $message = "Lunch Out recorded";
             $action = 'AM Out';
         }
         elseif ($attendance->am_out && !$attendance->pm_in && $currentHour >= 13 && $currentHour < 16) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'PM In', 'PM In');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->pm_in = $now;
             $message = "PM In recorded";
             $action = 'PM In';
         }
         elseif (($attendance->pm_in || $attendance->am_in) && !$attendance->pm_out && $currentHour >= 16) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'PM Out', 'PM Out');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->pm_out = $now;
             $standardOut = $this->scheduledTime($employee, 'end_time', 17);
             $timeoutStatus = $this->evaluateTimeOutStatus($now, $standardOut);

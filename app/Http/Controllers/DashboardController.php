@@ -67,6 +67,7 @@ class DashboardController extends Controller
                 ->whereHas('employeeProfile.user', function($q) {
                     $q->where('is_active', true);
                 })
+                ->whereDate('attendance_date', today())
                 ->latest('attendance_date')
                 ->limit(5)
                 ->get()
@@ -169,6 +170,7 @@ class DashboardController extends Controller
                 ->whereHas('employeeProfile.user', function($q) {
                     $q->where('is_active', true);
                 })
+                ->whereDate('attendance_date', today())
                 ->latest('attendance_date')
                 ->limit(5)
                 ->get()
@@ -348,6 +350,7 @@ class DashboardController extends Controller
                 ->whereHas('employeeProfile', function($q) use ($branchId) {
                     $q->where('branch_id', $branchId);
                 })
+                ->whereDate('attendance_date', today())
                 ->latest('attendance_date')
                 ->limit(5)
                 ->get()

@@ -99,6 +99,8 @@ return [
 
     'key' => env('APP_KEY'),
 
+    'biometric_device_secret' => env('BIOMETRIC_DEVICE_SECRET', env('APP_KEY')),
+
     'previous_keys' => [
         ...array_filter(
             explode(',', (string) env('APP_PREVIOUS_KEYS', ''))
