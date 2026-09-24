@@ -11,30 +11,26 @@
         </div>
     </div>
 
-    @if(session('success'))
-        <div class="alert alert-success">{{ session('success') }}</div>
-    @endif
-    @if($errors->any())
-        <div class="alert alert-danger">{{ $errors->first() }}</div>
-    @endif
-
     @if($profile)
         <div class="card mb-4">
             <div class="card-header"><h5 class="mb-0">Apply for Cash Advance</h5></div>
             <div class="card-body">
-                <p class="text-muted">Active employees may apply up to <strong>₱1,000</strong>. Installments are deducted every cutoff (3rd and 18th). New hires are marked for additional BH and FH review.</p>
+                <p class="text-muted">Active employees may apply up to <strong>₱1,000</strong>. New hires are marked for additional BH and FH review.</p>
                 <form method="POST" action="{{ route('cash-advances.store') }}" class="row g-3">
                     @csrf
                     <div class="col-md-3">
                         <label class="form-label">Requested Amount</label>
-                        <input type="number" name="requested_amount" min="1" max="1000" step="0.01" class="form-control" required>
+                        <input type="number" name="requested_amount" min="1" max="{{ $availableCashAdvanceBalance }}" step="0.01" class="form-control" required>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Installments / Cutoffs</label>
-                        <input type="number" name="installments" min="1" max="24" value="1" class="form-control" required>
-                        <small class="text-muted">Deducted once every payroll cutoff.</small>
+                        <label class="form-label">Available Remaining Limit</label>
+                        <input type="text" class="form-control" value="₱{{ number_format($availableCashAdvanceBalance, 2) }}" readonly>
                     </div>
-                    <div class="col-md-6">
+                    <div class="col-md-3">
+                        <label class="form-label">Total Active Cash Advances</label>
+                        <input type="text" class="form-control" value="₱{{ number_format($totalCashAdvances, 2) }}" readonly>
+                    </div>
+                    <div class="col-md-3">
                         <label class="form-label">Purpose</label>
                         <input type="text" name="purpose" maxlength="2000" class="form-control" required>
                     </div>
@@ -47,15 +43,33 @@
     <div class="card">
         <div class="card-header"><h5 class="mb-0">Cash Advance Applications</h5></div>
         <div class="table-responsive">
+            @php
+                $runningCashAdvanceBalance = 1000;
+                $cashAdvanceRowBalances = [];
+                foreach ($applications->getCollection()->sortBy('created_at') as $listedApplication) {
+                    if (in_array($listedApplication->status, ['approved', 'deducting'], true)) {
+                        $listedAmount = (float) ($listedApplication->approved_amount ?: $listedApplication->requested_amount);
+                        $runningCashAdvanceBalance = max(0, $runningCashAdvanceBalance - $listedAmount);
+                        $cashAdvanceRowBalances[$listedApplication->id] = $runningCashAdvanceBalance;
+                    } elseif (in_array($listedApplication->status, ['pending_fo', 'pending_bh', 'pending_hr', 'pending_fh'], true)) {
+                        $cashAdvanceRowBalances[$listedApplication->id] = $cashAdvanceAvailableByEmployee[$listedApplication->employee_profile_id] ?? 1000;
+                    } else {
+                        $cashAdvanceRowBalances[$listedApplication->id] = 0;
+                    }
+                }
+            @endphp
             <table class="table table-hover mb-0">
-                <thead><tr><th>Employee</th><th>Amount</th><th>Installment</th><th>Eligibility</th><th>Purpose</th><th>Status</th><th>Action</th></tr></thead>
+                <thead><tr><th>Employee</th><th>Amount</th><th>Remaining After This Advance</th><th>Purpose</th><th>Status</th><th>Action</th></tr></thead>
                 <tbody>
                 @forelse($applications as $application)
                     <tr>
                         <td>{{ $application->employeeProfile->first_name }} {{ $application->employeeProfile->last_name }}<br><small class="text-muted">{{ $application->employeeProfile->employee_number }}</small></td>
                         <td>₱{{ number_format($application->approved_amount ?: $application->requested_amount, 2) }}</td>
-                        <td>₱{{ number_format($application->installment_amount ?: ($application->requested_amount / max(1, $application->installments)), 2) }} x {{ $application->installments }} cutoffs</td>
-                        <td>{{ str_replace('_', ' ', ucfirst($application->eligibility_category)) }}</td>
+                        @php
+                            $cashAdvanceAmount = (float) ($application->approved_amount ?: $application->requested_amount);
+                            $cashAdvanceRemaining = $cashAdvanceRowBalances[$application->id] ?? 0;
+                        @endphp
+                        <td>₱{{ number_format($cashAdvanceRemaining, 2) }}</td>
                         <td>{{ $application->purpose }}</td>
                         <td><span class="badge bg-{{ in_array($application->status, ['approved'], true) ? 'success' : (str_contains($application->status, 'pending') ? 'warning text-dark' : 'secondary') }}">{{ str_replace('_', ' ', ucfirst($application->status)) }}</span></td>
                         <td>
@@ -72,9 +86,6 @@
                                 <form method="POST" action="{{ $reviewRoute }}" class="d-flex gap-1 flex-wrap">
                                     @csrf
                                     <input type="text" name="reason" class="form-control form-control-sm" placeholder="Reason / note">
-                                    @if($application->status === 'pending_fh')
-                                        <input type="number" name="approved_amount" class="form-control form-control-sm" placeholder="Approved amount" step="0.01" min="1">
-                                    @endif
                                     <button name="decision" value="approve" class="btn btn-sm btn-success">Approve</button>
                                     <button name="decision" value="reject" class="btn btn-sm btn-outline-danger">Reject</button>
                                 </form>
@@ -84,7 +95,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="7" class="text-center text-muted py-4">No cash advance applications for this account or review stage.</td></tr>
+                    <tr><td colspan="6" class="text-center text-muted py-4">No cash advance applications for this account or review stage.</td></tr>
                 @endforelse
                 </tbody>
             </table>

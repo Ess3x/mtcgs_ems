@@ -33,7 +33,7 @@
                                         <td>{{ $branch->branch_code }}</td>
                                         <td>{{ $branch->branch_name }}</td>
                                         <td>{{ $branch->address }}</td>
-                                        <td>{{ $branch->employees()->count() }}</td>
+                                        <td>{{ $branch->employeeCount() }}</td>
                                         <td>
                                             <a href="{{ route('admin.branches.show', $branch) }}" class="btn btn-sm btn-info">
                                                 <i class="fas fa-eye"></i> View

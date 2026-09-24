@@ -322,7 +322,9 @@
             }
         } catch (error) {
             console.error('Fingerprint launch error:', error);
-            alert('Unable to launch the fingerprint enrollment app.');
+            const fallbackPath = '{{ env("MTCGS_ENROLL_EXE") ?: "" }}';
+            const fallbackText = fallbackPath ? '\n\nFallback local executable: ' + fallbackPath : '';
+            alert('Unable to launch the fingerprint enrollment app.' + fallbackText);
         }
     }
 

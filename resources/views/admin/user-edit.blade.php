@@ -65,14 +65,31 @@
                         @endif
                         
                         @if($role === 'finance')
+                            @php($linkedEmployeeProfile = $userData->employeeProfile)
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="date-of-birth" class="form-label">Date of Birth</label>
+                                    <input type="date" id="date-of-birth" name="date_of_birth" class="form-control" value="{{ old('date_of_birth', optional($linkedEmployeeProfile?->date_of_birth)->format('Y-m-d')) }}">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="gender" class="form-label">Gender</label>
+                                    <select id="gender" name="gender" class="form-select">
+                                        <option value="">-- Select Gender --</option>
+                                        <option value="Male" {{ old('gender', $linkedEmployeeProfile->gender ?? '') === 'Male' ? 'selected' : '' }}>Male</option>
+                                        <option value="Female" {{ old('gender', $linkedEmployeeProfile->gender ?? '') === 'Female' ? 'selected' : '' }}>Female</option>
+                                        <option value="Other" {{ old('gender', $linkedEmployeeProfile->gender ?? '') === 'Other' ? 'selected' : '' }}>Other</option>
+                                    </select>
+                                </div>
+                            </div>
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label class="form-label">Status</label>
                                     <select name="status" class="form-control">
                                         <option value="New Hire" {{ old('status', $userData->status ?? 'New Hire') === 'New Hire' ? 'selected' : '' }}>New Hire</option>
-                                        <option value="Regular" {{ old('status', $userData->status ?? '') === 'Regular' ? 'selected' : '' }}>Regular</option>
-                                        <option value="1-2 Years in Service" {{ old('status', $userData->status ?? '') === '1-2 Years in Service' ? 'selected' : '' }}>1-2 Years in Service</option>
+                                        <option value="1 Year of Service" {{ old('status', $userData->status ?? '') === '1 Year of Service' ? 'selected' : '' }}>1 Year of Service</option>
                                         <option value="3+ Years of Service" {{ old('status', $userData->status ?? '') === '3+ Years of Service' ? 'selected' : '' }}>3+ Years of Service</option>
+                                        <option value="Regular" {{ old('status', $userData->status ?? '') === 'Regular' ? 'selected' : '' }} style="display:none;">Regular</option>
+                                        <option value="1-2 Years in Service" {{ old('status', $userData->status ?? '') === '1-2 Years in Service' ? 'selected' : '' }} style="display:none;">1-2 Years in Service</option>
                                     </select>
                                 </div>
                                 <div class="col-md-6 mb-3">
@@ -263,8 +280,10 @@
                 scannerStatus.className = 'alert alert-info';
                 scannerStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for fingerprint capture from desktop app...';
             } catch (error) {
+                const fallbackPath = '{{ env("MTCGS_ENROLL_EXE") ?: "" }}';
+                const fallbackText = fallbackPath ? ' Local fallback executable: ' + fallbackPath : '';
                 scannerStatus.className = 'alert alert-danger';
-                scannerStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Could not launch the enrollment app. Please make sure the custom URI handler is installed.';
+                scannerStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Could not launch the enrollment app. Please make sure the custom URI handler is installed.' + fallbackText;
             }
         }
 

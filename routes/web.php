@@ -11,7 +11,32 @@ use App\Http\Controllers\EmployeeController;
 
 // Public landing page (show before login)
 Route::get('/', function () {
-    return view('landing');
+    $homepageSettings = \App\Models\SiteSetting::query()
+        ->whereIn('key', [
+            'homepage_hero_title',
+            'homepage_hero_text',
+            'homepage_about_text',
+            'homepage_support_text',
+            'homepage_logo_url',
+            'homepage_background_url',
+        ])
+        ->pluck('value', 'key');
+    $slideSettings = \App\Models\SiteSetting::query()
+        ->where('key', 'like', 'homepage_slide_%')
+        ->pluck('value', 'key');
+    $slides = [];
+    foreach ($slideSettings as $key => $value) {
+        if (preg_match('/^homepage_slide_(\d+)_(image|title|text)$/', $key, $matches)) {
+            $slides[(int) $matches[1]][$matches[2]] = $value;
+        }
+    }
+    ksort($slides);
+
+    return view('landing', [
+        'homepageSettings' => $homepageSettings,
+        'slides' => $slides,
+        'branches' => \App\Models\Branch::query()->orderBy('branch_name')->get(),
+    ]);
 })->name('landing');
 
 // Guest routes
@@ -175,14 +200,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/admin/shifts', [App\Http\Controllers\ShiftController::class, 'store'])->name('admin.shifts.store');
     Route::put('/admin/shifts/{shift}', [App\Http\Controllers\ShiftController::class, 'update'])->name('admin.shifts.update');
     Route::delete('/admin/shifts/{shift}', [App\Http\Controllers\ShiftController::class, 'destroy'])->name('admin.shifts.destroy');
+    Route::get('/admin/shifts/{employee}/schedule', [App\Http\Controllers\ShiftController::class, 'employeeSchedule'])->name('admin.shifts.employee-schedule');
     Route::post('/admin/shifts/assign/{employee}', [App\Http\Controllers\ShiftController::class, 'assign'])->name('admin.shifts.assign');
+    Route::delete('/admin/shifts/{employee}/schedule/{shift}', [App\Http\Controllers\ShiftController::class, 'detachShift'])->name('admin.shifts.detach-shift');
 
     Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/devices', [App\Http\Controllers\Admin\DeviceController::class, 'index'])->name('devices.index');
+        Route::get('/devices/status-data', [App\Http\Controllers\Admin\DeviceController::class, 'statusData'])->name('devices.status-data');
         Route::get('/devices/create', [App\Http\Controllers\Admin\DeviceController::class, 'create'])->name('devices.create');
         Route::post('/devices', [App\Http\Controllers\Admin\DeviceController::class, 'store'])->name('devices.store');
+        Route::get('/devices/branches/{branch}', [App\Http\Controllers\Admin\DeviceController::class, 'branchDetails'])->name('devices.branches.show');
         Route::get('/devices/{device}/edit', [App\Http\Controllers\Admin\DeviceController::class, 'edit'])->name('devices.edit');
         Route::put('/devices/{device}', [App\Http\Controllers\Admin\DeviceController::class, 'update'])->name('devices.update');
+        Route::patch('/devices/{device}/status', [App\Http\Controllers\Admin\DeviceController::class, 'updateStatus'])->name('devices.status');
         Route::delete('/devices/{device}', [App\Http\Controllers\Admin\DeviceController::class, 'destroy'])->name('devices.destroy');
         
         Route::get('/branch-heads', [App\Http\Controllers\Admin\BranchHeadController::class, 'index'])->name('branch-heads.index');
@@ -242,6 +272,12 @@ Route::middleware('auth')->group(function () {
         
         // Branches routes
         Route::resource('branches', App\Http\Controllers\Admin\BranchController::class);
+
+        Route::get('/homepage', [App\Http\Controllers\Admin\HomepageController::class, 'edit'])->name('homepage.edit');
+        Route::put('/homepage', [App\Http\Controllers\Admin\HomepageController::class, 'update'])->name('homepage.update');
+        Route::post('/homepage/slides/{slideId}/archive', [App\Http\Controllers\Admin\HomepageController::class, 'archiveSlide'])->name('homepage.slides.archive');
+        Route::post('/homepage/archives/{archive}/restore', [App\Http\Controllers\Admin\HomepageController::class, 'restoreArchive'])->name('homepage.archives.restore');
+        Route::delete('/homepage/archives/{archive}', [App\Http\Controllers\Admin\HomepageController::class, 'destroyArchive'])->name('homepage.archives.destroy');
     });
 });
 
@@ -249,12 +285,6 @@ Route::post('/attendance/clock', [App\Http\Controllers\Api\AttendanceController:
 
 // Biometric setup page (admin only)
 Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/biometric', function () {
-        $unregisteredEmployees = \App\Models\Employee::where('is_fingerprint_registered', false)->get();
-        $registeredEmployees = \App\Models\Employee::where('is_fingerprint_registered', true)->get();
-        return view('admin.biometric', compact('unregisteredEmployees', 'registeredEmployees'));
-    })->name('biometric');
-
     Route::view('/fingerprint-scanner', 'admin.biometric-scanner')->name('fingerprint-scanner');
     
     // Fingerprint Demo
@@ -294,11 +324,17 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     });
 });
 
+// Attendance Management Routes (Admin only)
+Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/attendance-management', [App\Http\Controllers\Admin\DTRManagementController::class, 'attendanceManagementIndex'])->name('attendance-management.index');
+});
+
 // DTR Management Routes (Admin/Finance only)
 Route::middleware('auth')->prefix('admin')->name('admin.dtr.')->group(function () {
     Route::get('/dtr-management', [App\Http\Controllers\Admin\DTRManagementController::class, 'index'])->name('index');
     Route::get('/dtr-management/export-submitted', [App\Http\Controllers\Admin\DTRManagementController::class, 'exportSubmittedExcel'])->name('export-submitted');
     Route::post('/dtr-management/submit-all-to-hr', [App\Http\Controllers\Admin\DTRManagementController::class, 'submitAllToHr'])->name('submit-all-to-hr');
+    Route::post('/dtr-management/return-all-to-bh', [App\Http\Controllers\Admin\DTRManagementController::class, 'returnAllToBranchHead'])->name('return-all-to-bh');
     Route::post('/dtr-management/submit-all-to-finance-head', [App\Http\Controllers\Admin\DTRManagementController::class, 'submitAllToFinanceHead'])->name('submit-all-to-finance-head');
     Route::post('/dtr/{dtr}/compute', [App\Http\Controllers\Admin\DTRManagementController::class, 'computeDtr'])->name('compute');
     Route::get('/dtr/{dtr}', [App\Http\Controllers\Admin\DTRManagementController::class, 'show'])->name('show');
@@ -346,6 +382,19 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::post('/authority/admin/{adminId}/revoke', [App\Http\Controllers\Admin\AuthorityController::class, 'revokeAdminAuthority'])->name('authority.admin.revoke');
     Route::post('/authority/finance/{financeId}/grant', [App\Http\Controllers\Admin\AuthorityController::class, 'grantFinanceAuthority'])->name('authority.finance.grant');
     Route::post('/authority/finance/{financeId}/revoke', [App\Http\Controllers\Admin\AuthorityController::class, 'revokeFinanceAuthority'])->name('authority.finance.revoke');
+
+    // Leave Credits Management (Super Admin Only)
+    Route::get('/leave-credits', [App\Http\Controllers\LeaveController::class, 'manageCredits'])->name('leave-credits.index');
+    Route::post('/leave-credits/{employee}', [App\Http\Controllers\LeaveController::class, 'updateCredits'])->name('leave-credits.update');
+
+    // Cash Charges Management
+    Route::get('/cash-charges', [App\Http\Controllers\LeaveController::class, 'manageCashCharges'])->name('cash-charges.index');
+    Route::post('/cash-charges', [App\Http\Controllers\LeaveController::class, 'storeCashCharge'])->name('cash-charges.store');
+    Route::post('/cash-charges/{employee}/request-update', [App\Http\Controllers\LeaveController::class, 'requestCashChargeBalanceUpdate'])->name('cash-charges.request-update');
+    Route::post('/cash-charges/{cashCharge}/approve', [App\Http\Controllers\LeaveController::class, 'approveCashCharge'])->name('cash-charges.approve');
+    Route::post('/cash-charges/{cashCharge}/archive', [App\Http\Controllers\LeaveController::class, 'archiveCashCharge'])->name('cash-charges.archive');
+    Route::post('/cash-charges/{cashCharge}/unarchive', [App\Http\Controllers\LeaveController::class, 'unarchiveCashCharge'])->name('cash-charges.unarchive');
+    Route::post('/cash-charges/{employee}', [App\Http\Controllers\LeaveController::class, 'updateCashCharges'])->name('cash-charges.update');
 });
 
 // Dashboard Data API (for auto-refresh)
@@ -357,6 +406,8 @@ Route::middleware('auth')->prefix('admin')->group(function () {
     Route::get('/dashboard-data', [App\Http\Controllers\Api\DashboardDataController::class, 'getAdminDashboard']);
 });
 
+Route::middleware('auth')->get('/live-updates', [App\Http\Controllers\Api\DashboardDataController::class, 'getLiveUpdates'])->name('live-updates');
+
 // Payroll API (for auto-refresh)
 Route::middleware('auth')->prefix('admin')->group(function () {
     Route::get('/payroll-data', [App\Http\Controllers\Api\PayrollDataController::class, 'getPayrollData']);
@@ -365,6 +416,7 @@ Route::middleware('auth')->prefix('admin')->group(function () {
 // Admin User Management Routes
 Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/audit-logs', [App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-logs');
+    Route::get('/login-history', [App\Http\Controllers\Admin\LoginHistoryController::class, 'index'])->name('login-history');
     Route::get('/user-management', [App\Http\Controllers\Admin\UserManagementController::class, 'index'])->name('user-management');
     Route::get('/user-management/{role}/{id}', [App\Http\Controllers\Admin\UserManagementController::class, 'show'])->name('user-view');
     Route::get('/user-management/{role}/{id}/edit', [App\Http\Controllers\Admin\UserManagementController::class, 'edit'])->name('user-edit');
@@ -414,16 +466,8 @@ Route::middleware('auth')->prefix('reports')->name('reports.')->group(function (
 Route::middleware('auth')->get('/my-payslips', [App\Http\Controllers\Admin\PayrollController::class, 'myPayslips'])->name('employee.payslips');
 
 // Biometric Setup Page (Admin only)
-Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
-    Route::get('/biometric', function () {
-        return view('admin.biometric');
-    })->name('admin.biometric');
-});
-
-// Biometric Setup Page (Admin only - simplified)
 Route::middleware('auth')->prefix('admin')->group(function () {
     Route::get('/biometric', function () {
-        // Check if user is admin
         if (auth()->user()->role !== 'admin') {
             abort(403, 'Unauthorized. Admin only.');
         }
@@ -432,7 +476,8 @@ Route::middleware('auth')->prefix('admin')->group(function () {
 });
 
 // Finance Employee Management
-Route::middleware(['auth'])->prefix('finance')->name('finance.')->group(function () {
+Route::middleware(['auth', 'role:finance_officer,finance_head'])->prefix('finance')->name('finance.')->group(function () {
     Route::get('/employees', [App\Http\Controllers\Finance\EmployeeController::class, 'index'])->name('employees');
+    Route::get('/employee/{type}/{id}/profile', [App\Http\Controllers\Finance\EmployeeController::class, 'profile'])->name('employee.profile');
     Route::get('/employee/{id}/attendance', [App\Http\Controllers\Finance\EmployeeController::class, 'attendance'])->name('employee.attendance');
 });

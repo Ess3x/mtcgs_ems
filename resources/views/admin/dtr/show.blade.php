@@ -150,10 +150,12 @@
                                         }) : null;
                                         $isApprovedLeave = (bool) $approvedLeave;
                                         $isLWOP = $isApprovedLeave && (bool) $approvedLeave->is_absent;
-                                        $isNoRecordYet = !$isWeekend && !$log && $dtr->status !== 'approved';
-                                        $isPastMissedDay = !$isWeekend && !$log && $dtr->status === 'approved';
-                                        $isAbsent = !$isWeekend && ($isPastMissedDay || ($log && strtolower((string) $log->status) === 'absent'));
-                                        $attendanceStatus = $log ? $log->getDtrStatus() : null;
+                                        $isNoRecordYet = false;
+                                        $hasAnyAttendanceTime = (bool) ($log && ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out));
+                                        $isPending = !$isWeekend && !$isApprovedLeave && (!$log || !$hasAnyAttendanceTime) && !$current->isPast();
+                                        $isUpcoming = false;
+                                        $isAbsent = !$isWeekend && !$isApprovedLeave && $current->isPast() && (!$log || !$hasAnyAttendanceTime || in_array(strtolower((string) $log->status), ['absent', 'a'], true));
+                                        $attendanceStatus = $hasAnyAttendanceTime ? $log->getDtrStatus() : null;
                                         $isLateTimeIn = $attendanceStatus && str_contains($attendanceStatus, 'Late');
                                         $isEarlyOut = $attendanceStatus && str_contains($attendanceStatus, 'Early Out');
                                         $hours = 0;
@@ -163,9 +165,9 @@
                                         $statusLetter = $isWeekend ? 'WKD' : (
                                             $isLWOP ? 'LWOP' : (
                                                 $isApprovedLeave ? 'L' : (
-                                                    $isAbsent ? 'A' : (
-                                                        $isNoRecordYet ? '' : ($attendanceStatus ?: 'P')
-                                                    )
+                                                    $isAbsent ? 'A' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : (
+                                                        $isNoRecordYet ? '' : ($isPending ? 'Pending' : ($attendanceStatus ?: 'P'))
+                                                    )))
                                                 )
                                             )
                                         );
@@ -173,7 +175,7 @@
                                             $isLWOP ? 'bg-danger' : (
                                                 $isApprovedLeave ? 'bg-info' : (
                                                     $isAbsent ? 'bg-danger' : (
-                                                        $isNoRecordYet ? 'bg-transparent text-transparent border-0' : ($attendanceStatus === 'Half Day' ? 'bg-warning text-dark' : ($isLateTimeIn || $isEarlyOut ? 'bg-danger' : 'bg-success'))
+                                                        $isPending ? 'bg-secondary' : ($isNoRecordYet ? 'bg-transparent text-transparent border-0' : ($attendanceStatus === 'Half Day' ? 'bg-warning text-dark' : ($isLateTimeIn || $isEarlyOut ? 'bg-danger' : 'bg-success')))
                                                     )
                                                 )
                                             )

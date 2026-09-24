@@ -118,6 +118,7 @@ class DTR extends Model
         });
         $workingDayService = app(\App\Services\WorkingDayService::class);
         $branchId = $this->employeeProfile?->branch_id;
+        $today = Carbon::today();
 
         $daysPresent = 0;
         $daysAbsent = 0;
@@ -157,14 +158,11 @@ class DTR extends Model
                     $leaveWithoutPayDays++;
                 } elseif ($approvedLeave) {
                     $paidLeaveDays++;
-                } elseif (
-                    !$log
-                    && $this->status === 'approved'
-                ) {
-                    $daysAbsent++;
                 } elseif ($log && in_array($logStatus, ['leave', 'leave_paid', 'on leave'])) {
                     $paidLeaveDays++;
                 } elseif ($log && in_array($logStatus, ['absent', 'a'])) {
+                    $daysAbsent++;
+                } elseif ((!$log || !($log->am_in || $log->am_out || $log->pm_in || $log->pm_out)) && $current->lt($today)) {
                     $daysAbsent++;
                 } elseif ($log) {
                     $daysPresent++;

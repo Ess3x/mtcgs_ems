@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\EmployeeProfile;
 use App\Models\User;
+use App\Models\Branch;
 use App\Models\AttendanceLog;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -15,6 +16,13 @@ class EmployeeController extends Controller
     public function __construct()
     {
         $this->middleware('auth');
+        $this->middleware(function ($request, $next) {
+            if (!$request->user()?->isFinanceOfficer()) {
+                return redirect()->route('dashboard')->with('error', 'You are not authorized to access that page.');
+            }
+
+            return $next($request);
+        });
     }
     
     private function getBranchId()
@@ -30,20 +38,39 @@ class EmployeeController extends Controller
     public function index()
     {
         $branchId = $this->getBranchId();
-        
-        // IMPORTANTE: I-filter ang employees LANG - ACTIVE only!
-        // Kunin ang lahat ng employee_profiles na nasa branch
-        // at ang kanilang user ay may role = 'employee' at is_active = true
-        $employees = EmployeeProfile::where('branch_id', $branchId)
-            ->whereHas('user', function($q) {
-                $q->where('role', 'employee')
-                  ->where('is_active', true);  // Only active employees
+        $buhiBranch = Branch::where('branch_name', 'like', '%Buhi%')->first();
+        $branchIds = collect([$branchId, $buhiBranch?->id])->filter()->unique()->values();
+
+        // Finance users can view their branch plus the segregated Buhi list.
+        $users = User::with(['profile', 'branch'])
+            ->where('is_active', true)
+            ->where(function ($query) use ($branchIds) {
+                $query->whereIn('branch_id', $branchIds)
+                    ->orWhereHasMorph('profile', [
+                        EmployeeProfile::class,
+                        \App\Models\FinanceProfile::class,
+                        \App\Models\AdminProfile::class,
+                        \App\Models\BranchHeadProfile::class,
+                    ], function ($profileQuery) use ($branchIds) {
+                        $profileQuery->whereIn('branch_id', $branchIds);
+                    })
+                    ->orWhere(function ($adminQuery) {
+                        $adminQuery->where('role', 'admin')
+                            ->where(function ($typeQuery) {
+                                $typeQuery->whereIn('admin_type', ['super_admin', 'hr'])
+                                    ->orWhereNull('admin_type')
+                                    ->orWhere('admin_type', '');
+                            });
+                    });
             })
+            ->orderBy('name')
             ->get();
+
+        $branchName = Branch::find($branchId)?->branch_name ?? 'Your Branch';
+        $buhiBranchId = $buhiBranch?->id;
+        $buhiBranchName = $buhiBranch?->branch_name ?? 'Buhi Branch';
         
-        $branchName = optional($employees->first()?->branch)->branch_name ?? 'Your Branch';
-        
-        return view('finance.employees', compact('employees', 'branchName'));
+        return view('finance.employees', compact('users', 'branchId', 'branchName', 'buhiBranchId', 'buhiBranchName'));
     }
     
     public function attendance($id)
@@ -83,5 +110,23 @@ class EmployeeController extends Controller
             'employee', 'attendanceLogs', 'currentMonth',
             'attendanceByDate', 'prevMonth', 'nextMonth', 'selectedMonth'
         ));
+    }
+
+    public function profile(string $type, int $id)
+    {
+        $branchId = $this->getBranchId();
+        $profileClass = match (strtolower($type)) {
+            'employee', 'employeeprofile' => EmployeeProfile::class,
+            'finance', 'financeprofile' => \App\Models\FinanceProfile::class,
+            'admin', 'adminprofile' => \App\Models\AdminProfile::class,
+            'branchhead', 'branchheadprofile' => \App\Models\BranchHeadProfile::class,
+            default => abort(404),
+        };
+
+        $profile = $profileClass::with('branch', 'user')->findOrFail($id);
+        $canViewAnyBranch = Auth::user()->isSuperAdmin();
+        abort_unless($canViewAnyBranch || ($profile->branch_id ?? $profile->user?->branch_id) === $branchId, 404);
+
+        return view('finance.employee-profile', compact('profile'));
     }
 }

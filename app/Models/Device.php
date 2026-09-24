@@ -9,11 +9,18 @@ class Device extends Model
     protected $fillable = [
         'mac_address',
         'serial_number',
+        'wifi_mac_address',
+        'laptop_mac_address',
         'allowed_mac_addresses',
         'device_name',
         'device_type',
         'branch_id',
         'location',
+        'address',
+        'latitude',
+        'longitude',
+        'radius_meters',
+        'location_check_enabled',
         'status',
         'last_used_at',
         'notes',
@@ -21,6 +28,10 @@ class Device extends Model
 
     protected $casts = [
         'last_used_at' => 'datetime',
+        'latitude' => 'decimal:7',
+        'longitude' => 'decimal:7',
+        'radius_meters' => 'integer',
+        'location_check_enabled' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -59,6 +70,21 @@ class Device extends Model
             ->first();
     }
 
+    public static function getByDeviceIdentifier($identifier)
+    {
+        $normalized = strtoupper(trim((string) $identifier));
+
+        if ($normalized === '') {
+            return null;
+        }
+
+        return self::where('status', 'active')
+            ->where(function ($query) use ($normalized) {
+                $query->whereRaw('UPPER(TRIM(serial_number)) = ?', [$normalized]);
+            })
+            ->first();
+    }
+
     /**
      * Get device by MAC address
      */
@@ -66,11 +92,16 @@ class Device extends Model
     {
         $normalized = self::normalizeMacAddress($macAddress);
 
+        if ($normalized === '') {
+            return null;
+        }
+
         return self::where('status', 'active')
             ->where(function ($query) use ($normalized) {
                 $query->where('mac_address', strtoupper($normalized))
-                    ->orWhere('mac_address', strtoupper($normalized))
                     ->orWhereRaw("REPLACE(REPLACE(REPLACE(UPPER(mac_address), ':', ''), '-', ''), ' ', '') = ?", [$normalized])
+                    ->orWhere('wifi_mac_address', strtoupper($normalized))
+                    ->orWhereRaw("REPLACE(REPLACE(REPLACE(UPPER(wifi_mac_address), ':', ''), '-', ''), ' ', '') = ?", [$normalized])
                     ->orWhereRaw("LOWER(COALESCE(allowed_mac_addresses, '[]')) LIKE ?", ['%' . strtolower($normalized) . '%']);
             })
             ->first();
@@ -111,7 +142,11 @@ class Device extends Model
             return true;
         }
 
-        $allowed = collect([$this->mac_address, ...($this->parsedAllowedMacAddresses())])
+        $allowed = collect([
+            $this->mac_address,
+            $this->wifi_mac_address,
+            ...($this->parsedAllowedMacAddresses()),
+        ])
             ->map(fn ($allowedMac) => self::normalizeMacAddress($allowedMac))
             ->filter(fn ($allowedMac) => $allowedMac !== '')
             ->all();
@@ -144,6 +179,15 @@ class Device extends Model
         return strlen($normalized) === 12
             ? implode(':', str_split($normalized, 2))
             : (string) $this->mac_address;
+    }
+
+    public function getFormattedWifiMacAddressAttribute(): string
+    {
+        $normalized = self::normalizeMacAddress($this->wifi_mac_address);
+
+        return strlen($normalized) === 12
+            ? implode(':', str_split($normalized, 2))
+            : (string) $this->wifi_mac_address;
     }
 
     /**

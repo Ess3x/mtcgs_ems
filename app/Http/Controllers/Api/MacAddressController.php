@@ -86,6 +86,47 @@ class MacAddressController extends Controller
     }
 
     /**
+     * Return the current status of a registered device, including inactive devices.
+     */
+    public function getDeviceStatus(Request $request)
+    {
+        $request->validate([
+            'device_serial' => 'nullable|string',
+            'device_id' => 'nullable|string',
+        ]);
+
+        if (!$request->filled('device_serial') && !$request->filled('device_id')) {
+            return response()->json(['success' => false, 'message' => 'Device identity is required.'], 422);
+        }
+
+        $device = null;
+        if ($request->filled('device_serial')) {
+            $serial = Device::normalizeSerialNumber($request->input('device_serial'));
+            $device = Device::whereRaw('UPPER(TRIM(serial_number)) = ?', [$serial])->first();
+        }
+
+        if (!$device && $request->filled('device_id')) {
+            $device = Device::where('id', $request->input('device_id'))
+                ->orWhere('serial_number', $request->input('device_id'))
+                ->first();
+        }
+
+        if (!$device) {
+            return response()->json(['success' => false, 'message' => 'Device not found.'], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'device' => [
+                'id' => $device->id,
+                'device_name' => $device->device_name,
+                'status' => $device->status,
+                'updated_at' => $device->updated_at?->toIso8601String(),
+            ],
+        ]);
+    }
+
+    /**
      * Register a new device (Super Admin only)
      */
     public function registerDevice(Request $request)

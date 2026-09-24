@@ -3,12 +3,12 @@
 @section('title', 'Employees')
 
 @section('content')
-<div class="container-fluid">
+<div class="container-fluid employee-management-page">
     <div class="row">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
+            <div class="employee-toolbar d-flex justify-content-between align-items-center mb-4">
                 <h1 class="h3">Employee Management</h1>
-                <div class="btn-group" role="group">
+                <div class="employee-actions d-flex gap-2" role="group">
                     <a href="{{ route('admin.employees-archives') }}" class="btn btn-danger">
                         <i class="fas fa-archive"></i> Archives
                     </a>
@@ -20,7 +20,7 @@
 
     <div class="card mb-4">
         <div class="card-body">
-            <form method="GET" class="row g-3">
+            <form method="GET" class="employee-filter-form row g-3">
                 @if(Auth::user()->admin_type === 'super_admin')
                     <div class="col-md-4">
                         <label for="employee-branch-filter" class="form-label">Filter by Branch</label>
@@ -42,13 +42,13 @@
                     </div>
                 @endif
                 <div class="col-md-2 d-flex align-items-end">
-                    <a href="{{ route('admin.employees') }}" class="btn btn-secondary">Reset</a>
+                    <a href="{{ route('admin.employees') }}" class="btn btn-secondary employee-reset">Reset</a>
                 </div>
             </form>
         </div>
     </div>
 
-    <div class="row g-4 mb-4">
+    <div class="row g-4 mb-4 employee-summary">
         <div class="col-md-4">
             <div class="card bg-primary text-white">
                 <div class="card-body">
@@ -78,18 +78,18 @@
 
     <ul class="nav nav-tabs employee-tabs mb-0">
         <li class="nav-item">
-            <a href="{{ route('admin.employees') }}" class="nav-link {{ !($showFinance ?? false) ? 'active' : '' }}">
+            <a href="{{ route('admin.employees', array_filter(['branch_id' => $selectedBranch])) }}" class="nav-link {{ !($showFinance ?? false) ? 'active' : '' }}">
                 Employee List
             </a>
         </li>
         <li class="nav-item">
-            <a href="{{ route('admin.employees', ['finance' => 1]) }}" class="nav-link {{ $showFinance ?? false ? 'active' : '' }}">
+            <a href="{{ route('admin.employees', array_filter(['finance' => 1, 'branch_id' => $selectedBranch])) }}" class="nav-link {{ $showFinance ?? false ? 'active' : '' }}">
                 Finance Officer List
             </a>
         </li>
         @if(Auth::user()->isSuperAdmin())
             <li class="nav-item">
-                <a href="{{ route('admin.branch-heads.index') }}" class="nav-link {{ request()->routeIs('admin.branch-heads.*') ? 'active' : '' }}">
+                <a href="{{ route('admin.branch-heads.index', array_filter(['branch_id' => $selectedBranch])) }}" class="nav-link {{ request()->routeIs('admin.branch-heads.*') ? 'active' : '' }}">
                     Branch Admin List
                 </a>
             </li>
@@ -100,6 +100,8 @@
         .employee-tabs {
             display: inline-flex;
             width: auto;
+            max-width: 100%;
+            overflow-x: auto;
             background: transparent;
             border-bottom: 1px solid #dee2e6;
         }
@@ -127,6 +129,92 @@
         .employee-tabs .nav-link.active {
             color: #0d6efd;
             border-bottom-color: #0d6efd;
+        }
+
+        .employee-management-page .table-responsive {
+            scrollbar-width: thin;
+        }
+
+        .employee-management-page .employee-toolbar h1 {
+            margin-bottom: 0;
+        }
+
+        .employee-management-page .employee-pagination {
+            gap: 1rem;
+        }
+
+        @media (max-width: 767.98px) {
+            .employee-management-page {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+
+            .employee-management-page .employee-toolbar {
+                align-items: flex-start !important;
+                flex-direction: column;
+                gap: 0.85rem;
+            }
+
+            .employee-management-page .employee-toolbar h1 {
+                font-size: 1.35rem;
+            }
+
+            .employee-management-page .employee-actions {
+                width: 100%;
+            }
+
+            .employee-management-page .employee-actions .btn {
+                flex: 1 1 0;
+                white-space: nowrap;
+            }
+
+            .employee-management-page .employee-filter-form .col-md-2,
+            .employee-management-page .employee-filter-form .col-md-4 {
+                width: 100%;
+            }
+
+            .employee-management-page .employee-reset {
+                width: 100%;
+            }
+
+            .employee-management-page .employee-summary {
+                gap: 0.75rem !important;
+            }
+
+            .employee-management-page .employee-summary > div {
+                width: 100%;
+            }
+
+            .employee-management-page .employee-tabs {
+                display: flex;
+                width: 100%;
+                white-space: nowrap;
+            }
+
+            .employee-management-page .employee-tabs .nav-item {
+                flex: 0 0 auto;
+            }
+
+            .employee-management-page .employee-tabs .nav-link {
+                padding: 0.8rem 1rem;
+                font-size: 0.88rem;
+            }
+
+            .employee-management-page .card-footer .employee-pagination {
+                align-items: stretch !important;
+                flex-direction: column;
+            }
+
+            .employee-management-page .card-footer nav,
+            .employee-management-page .card-footer .pagination {
+                max-width: 100%;
+                overflow-x: auto;
+            }
+
+            .employee-management-page .card-footer .pagination {
+                flex-wrap: nowrap;
+                margin-bottom: 0;
+            }
         }
 
         /* Dark mode adjustments */
@@ -237,7 +325,7 @@
             </div>
         @if($employees instanceof \Illuminate\Contracts\Pagination\Paginator || $employees instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator)
             <div class="card-footer">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="employee-pagination d-flex justify-content-between align-items-center">
                     <small class="text-muted">
                         Showing <strong>{{ $employees->count() }}</strong> result{{ $employees->count() != 1 ? 's' : '' }} on page <strong>{{ $employees->currentPage() }}</strong>
                     </small>

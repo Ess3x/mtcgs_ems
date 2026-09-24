@@ -27,7 +27,7 @@ class DTRSubmitWorkflowTest extends TestCase
                 $table->unsignedBigInteger('employee_profile_id')->nullable();
                 $table->date('period_start')->nullable();
                 $table->date('period_end')->nullable();
-                $table->enum('status', ['draft', 'submitted', 'pending_system_admin', 'approved', 'rejected'])->default('draft');
+                $table->enum('status', ['draft', 'submitted', 'pending_system_admin', 'pending_finance_head', 'approved', 'rejected'])->default('draft');
                 $table->text('remarks')->nullable();
                 $table->decimal('total_hours', 8, 2)->nullable();
                 $table->integer('days_present')->nullable();
@@ -170,6 +170,10 @@ class DTRSubmitWorkflowTest extends TestCase
 
         $dtr->approve(20, 'super_admin');
 
+        $this->assertSame('pending_finance_head', $dtr->status);
+
+        $dtr->approve(30, 'finance_head');
+
         $this->assertSame('approved', $dtr->status);
     }
 
@@ -273,7 +277,7 @@ class DTRSubmitWorkflowTest extends TestCase
         $this->assertGreaterThan(0, $breakdown['total_hours']);
     }
 
-    public function test_missing_attendance_log_is_not_auto_counted_as_absent(): void
+    public function test_missing_past_attendance_log_is_counted_as_absent(): void
     {
         $dtr = DTR::create([
             'employee_profile_id' => 1,
@@ -293,7 +297,7 @@ class DTRSubmitWorkflowTest extends TestCase
         $breakdown = $dtr->getCalculationBreakdown();
 
         $this->assertSame(1, $breakdown['days_present']);
-        $this->assertSame(0, $breakdown['days_absent']);
+        $this->assertSame(1, $breakdown['days_absent']);
     }
 
     public function test_exhausted_sick_leave_can_still_be_filed_as_leave_without_pay(): void
@@ -417,5 +421,16 @@ class DTRSubmitWorkflowTest extends TestCase
         $this->assertSame('Late', $late->getDtrStatus());
         $this->assertSame('Early Out', $earlyOut->getDtrStatus());
         $this->assertSame('Half Day', $halfDay->getDtrStatus());
+    }
+
+    public function test_empty_attendance_log_stays_pending(): void
+    {
+        $empty = AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-22',
+            'status' => 'present',
+        ]);
+
+        $this->assertSame('Pending', $empty->getDtrStatus());
     }
 }

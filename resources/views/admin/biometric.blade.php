@@ -3,7 +3,123 @@
 @section('title', 'Biometric Management')
 
 @section('content')
-<div class="container-fluid">
+<style>
+    .biometric-status-list .list-group-item {
+        padding: 0.9rem 1rem;
+    }
+
+    .biometric-status-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        width: 100%;
+        flex-wrap: nowrap;
+    }
+
+    .biometric-status-copy {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .biometric-status-copy strong,
+    .biometric-status-copy small {
+        display: block;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+    }
+
+    .biometric-status-badge {
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.35rem;
+        white-space: nowrap;
+        min-width: 132px;
+        font-size: 0.8rem;
+        padding: 0.5rem 0.7rem;
+    }
+
+    .biometric-profile-card {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        min-width: 0;
+    }
+
+    .biometric-profile-avatar {
+        width: 46px;
+        height: 46px;
+        flex: 0 0 46px;
+        object-fit: cover;
+        border-radius: 50%;
+        border: 2px solid rgba(13, 110, 253, 0.2);
+    }
+
+    .biometric-profile-initials {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        background: #0d6efd;
+        color: #fff;
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+
+    @media (max-width: 576px) {
+        .biometric-status-list .list-group-item {
+            padding: 0.8rem 0.75rem;
+        }
+
+        .biometric-status-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.6rem;
+        }
+
+        .biometric-status-copy {
+            width: 100%;
+        }
+
+        .biometric-status-badge {
+            width: 100%;
+            min-width: 0;
+            justify-content: center;
+        }
+    }
+
+    body.dark-mode .biometric-page .card-header.bg-white,
+    body.dark-mode .biometric-page .biometric-status-list .list-group-item,
+    body.dark-mode .biometric-page .biometric-status-list .list-group-item.bg-light {
+        background-color: #1e293b !important;
+        color: #e2e8f0 !important;
+        border-color: #334155 !important;
+    }
+
+    body.dark-mode .biometric-page .biometric-status-list .list-group-item strong,
+    body.dark-mode .biometric-page .biometric-status-list .list-group-item small {
+        color: #e2e8f0 !important;
+    }
+
+    body.dark-mode .biometric-page .text-primary {
+        color: #FFD166 !important;
+    }
+
+    .biometric-profile-link {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .biometric-profile-link:hover {
+        text-decoration: underline;
+    }
+
+    body.dark-mode .biometric-page .biometric-profile-link {
+        color: #FFD166 !important;
+    }
+</style>
+<div class="container-fluid biometric-page">
     <div class="row mb-4">
         <div class="col-12">
             <div class="card bg-primary text-white">
@@ -26,7 +142,7 @@
         $isBranchHeadSelfAttendance = $user && $user->role === 'branch_head';
     @endphp
     
-    @if($employeeProfile && $canSelfRegisterAdminFingerprint)
+    @if(false && $employeeProfile && $canSelfRegisterAdminFingerprint)
     <div class="row mb-4">
         <div class="col-md-6 mx-auto">
             <div class="card shadow-sm">
@@ -69,53 +185,62 @@
     </div>
     @endif
 
-    <!-- Register Employees Section -->
+    <!-- Register Personnel Section -->
     <div class="card mb-4">
         <div class="card-header bg-white">
-            <h5 class="mb-0"><i class="fas fa-users text-primary me-2"></i> Employee Fingerprint Registration</h5>
+            <h5 class="mb-0"><i class="fas fa-users text-primary me-2"></i> Fingerprint Registration</h5>
         </div>
         <div class="card-body">
-            <div id="unregisteredEmployeesList">
+            <div class="mb-3">
+                <h6 class="text-primary mb-2"><i class="fas fa-user-tie me-2"></i>Employees</h6>
+            </div>
+            <div id="unregisteredEmployeesList" class="biometric-status-list">
                 <div class="text-center">
                     <div class="spinner-border spinner-border-sm"></div> Loading employees...
                 </div>
             </div>
-        </div>
-    </div>
 
     @if(Auth::user()->isSuperAdmin())
-        <!-- Register Finance Officers Section (Super Admin only) -->
-        <div class="card mb-4">
-            <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="fas fa-chart-line text-info me-2"></i> Finance Officer Fingerprint Registration</h5>
-            </div>
-            <div class="card-body">
-                <div id="unregisteredFinanceList">
+        <div class="mt-4 pt-3 border-top">
+            <h6 class="text-primary mb-2"><i class="fas fa-chart-line me-2"></i>Finance Officers</h6>
+                <div id="unregisteredFinanceHeadList">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm"></div> Loading finance head...
+                    </div>
+                </div>
+                <div id="unregisteredFinanceOfficerList">
                     <div class="text-center">
                         <div class="spinner-border spinner-border-sm"></div> Loading finance officers...
                     </div>
                 </div>
-            </div>
         </div>
 
-        <!-- Register Admins Section (Super Admin only) -->
-        <div class="card mb-4">
-            <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="fas fa-user-shield text-danger me-2"></i> Admin Fingerprint Registration</h5>
-            </div>
-            <div class="card-body">
-                <div id="unregisteredAdminsList">
+        <div class="mt-4 pt-3 border-top">
+            <h6 class="text-primary mb-2"><i class="fas fa-user-shield me-2"></i>Super Admin / HR</h6>
+                <div id="unregisteredHrList">
                     <div class="text-center">
-                        <div class="spinner-border spinner-border-sm"></div> Loading admins...
+                        <div class="spinner-border spinner-border-sm"></div> Loading HR users...
                     </div>
                 </div>
-            </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-top">
+            <h6 class="text-primary mb-2"><i class="fas fa-user-shield me-2"></i>Branch Admins</h6>
+                <div id="unregisteredBranchAdminList">
+                    <div class="text-center">
+                        <div class="spinner-border spinner-border-sm"></div> Loading branch admins...
+                    </div>
+                </div>
+        </div>
+        </div>
         </div>
     @endif
 </div>
 
 <script>
 const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+const appBaseUrl = @json(request()->getBaseUrl());
+const apiUrl = (path) => `${appBaseUrl}/api/${path}`;
 const jsonHeaders = {
     'Accept': 'application/json',
     'X-CSRF-TOKEN': csrfToken
@@ -162,7 +287,7 @@ async function registerAdminFingerprint() {
                 return;
             }
             
-            const response = await fetch('/api/biometric/admin-status', {
+            const response = await fetch(apiUrl('biometric/admin-status'), {
                 headers: jsonHeaders
             });
             
@@ -176,14 +301,17 @@ async function registerAdminFingerprint() {
         }, 1000);
         
     } catch (error) {
-        alert('Could not launch C# app. Please ensure the mtcgs-enroll URI handler is registered.\n\nRun this in PowerShell as Administrator:\nreg import "c:\\xampp\\htdocs\\mtcgs-main_08-13-26\\mtcgs-ems\\biometric\\mtcgs-enroll.reg"');
+        const fallbackPath = '{{ env("MTCGS_ENROLL_EXE") ?: "" }}';
+        const fallbackText = fallbackPath ? '\n\nFallback local executable: ' + fallbackPath : '';
+
+        alert('Could not launch C# app. Please ensure the mtcgs-enroll URI handler is registered.\n\nRun this in PowerShell as Administrator:\nreg import "c:\\xampp\\htdocs\\mtcgs-main_08-13-26\\mtcgs-ems\\biometric\\mtcgs-enroll.reg"' + fallbackText);
     }
 }
 
 async function processAdminAttendance() {
     const fakeFingerprint = getOrCreateFingerprint('mtcgs_admin_fingerprint', 'admin_fingerprint');
     
-    const response = await fetch('/api/biometric/admin-attendance', {
+    const response = await fetch(apiUrl('biometric/admin-attendance'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -202,117 +330,229 @@ async function processAdminAttendance() {
     }
 }
 
-// Load unregistered employees
+// Load unregistered employees grouped by branch
 async function loadUnregisteredEmployees() {
-    const response = await fetch('/api/biometric/unregistered-employees', {
+    const response = await fetch(apiUrl('biometric/unregistered-employees'), {
         headers: jsonHeaders
     });
     
     const result = await response.json();
     
-    if (result.success && result.data.length > 0) {
-        let html = '<div class="list-group">';
-        result.data.forEach(emp => {
+    const container = document.getElementById('unregisteredEmployeesList');
+    if (!container) {
+        return;
+    }
+
+    if (!result.success || !result.data || result.data.length === 0) {
+        container.innerHTML = '<div class="alert alert-success">All employees have registered fingerprints!</div>';
+        return;
+    }
+
+    const branches = {};
+    result.data.forEach(emp => {
+        const branchName = emp.branch_name || 'Unknown Branch';
+        if (!branches[branchName]) {
+            branches[branchName] = [];
+        }
+        branches[branchName].push(emp);
+    });
+
+    const branchEntries = Object.entries(branches);
+    let html = '<div class="list-group biometric-status-list">';
+
+    branchEntries.forEach(([branchName, employees]) => {
+        html += `
+            <div class="list-group-item bg-light">
+                <h6 class="mb-0 fw-bold text-primary">${branchName}</h6>
+            </div>
+        `;
+
+        employees.forEach(emp => {
+            const isRegistered = Boolean(emp.is_fingerprint_registered);
+            const buttonLabel = isRegistered ? 'Registered' : 'Unregistered';
+            const statusClass = isRegistered ? 'bg-success' : 'bg-danger';
+            const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-fingerprint';
+
             html += `
                 <div class="list-group-item">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${emp.name}</strong><br>
+                    <div class="biometric-status-item">
+                        <div class="biometric-profile-card biometric-status-copy">
+                            ${profileAvatar(emp)}
+                            <div>
+                                ${profileLink(emp)}
                             <small class="text-muted">${emp.employee_number} - ${emp.position || 'Staff'}</small>
+                            </div>
                         </div>
-                        <button onclick="registerEmployeeFingerprint(${emp.id}, '${emp.name}')" class="btn btn-sm btn-primary">
-                            <i class="fas fa-fingerprint"></i> Register
-                        </button>
+                        <span class="badge ${statusClass} text-white biometric-status-badge">
+                            <i class="fas ${buttonIcon}"></i> ${buttonLabel}
+                        </span>
                     </div>
                 </div>
             `;
         });
-        html += '</div>';
-        document.getElementById('unregisteredEmployeesList').innerHTML = html;
-    } else {
-        document.getElementById('unregisteredEmployeesList').innerHTML = '<div class="alert alert-success">All employees have registered fingerprints!</div>';
+    });
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+function profileAvatar(item) {
+    const initials = (item.name || '?')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0).toUpperCase())
+        .slice(0, 2)
+        .join('');
+
+    if (item.profile_photo_url) {
+        return `<img src="${item.profile_photo_url}" alt="${item.name || 'Profile photo'}" class="biometric-profile-avatar">`;
     }
+
+    return `<span class="biometric-profile-avatar biometric-profile-initials" aria-hidden="true">${initials}</span>`;
+}
+
+function profileLink(item) {
+    const name = item.name || 'Unnamed profile';
+    if (!item.id || !item.profile_type) {
+        return `<strong>${name}</strong>`;
+    }
+
+    return `<a class="biometric-profile-link fw-bold" href="${appBaseUrl}/finance/employee/${item.profile_type}/${item.id}/profile">${name}</a>`;
+}
+
+// Render list of status items for a target container
+function renderStatusList(container, items, emptyMessage, accentClass, labelPrefix, groupByBranch = false) {
+    if (!container) {
+        return;
+    }
+
+    if (!items || items.length === 0) {
+        container.innerHTML = `<div class="alert alert-success">${emptyMessage}</div>`;
+        return;
+    }
+
+    const groups = groupByBranch
+        ? items.reduce((result, item) => {
+            const branchName = item.branch_name || 'Unknown Branch';
+            (result[branchName] ||= []).push(item);
+            return result;
+        }, {})
+        : { '': items };
+
+    let html = '<div class="list-group biometric-status-list">';
+    Object.entries(groups).forEach(([branchName, groupItems]) => {
+        if (groupByBranch) {
+            html += `
+                <div class="list-group-item bg-light">
+                    <h6 class="mb-0 fw-bold text-primary"><i class="fas fa-building me-2"></i>${branchName}</h6>
+                </div>
+            `;
+        }
+
+        groupItems.forEach(item => {
+        const isRegistered = Boolean(item.is_fingerprint_registered);
+        const buttonLabel = isRegistered ? 'Registered' : 'Unregistered';
+        const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-fingerprint';
+        const statusClass = isRegistered ? 'bg-success' : accentClass;
+        const emailText = item.email || item.position || 'N/A';
+        const employeeLabel = item.employee_number ? `${item.employee_number}` : '';
+        const secondaryLine = item.email
+            ? `${item.email}${employeeLabel ? ` - ${employeeLabel}` : ''}`
+            : (employeeLabel || emailText);
+
+        html += `
+            <div class="list-group-item">
+                <div class="biometric-status-item">
+                    <div class="biometric-profile-card biometric-status-copy">
+                        ${profileAvatar(item)}
+                        <div>
+                            ${profileLink(item)}
+                            <small class="text-muted">${secondaryLine}</small>
+                        </div>
+                    </div>
+                    <span class="badge ${statusClass} text-white biometric-status-badge">
+                        <i class="fas ${buttonIcon}"></i> ${buttonLabel}
+                    </span>
+                </div>
+            </div>
+        `;
+        });
+    });
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 // Load unregistered finance officers
 async function loadUnregisteredFinanceOfficers() {
-    const financeList = document.getElementById('unregisteredFinanceList');
-    if (!financeList) {
+    const financeHeadList = document.getElementById('unregisteredFinanceHeadList');
+    const financeOfficerList = document.getElementById('unregisteredFinanceOfficerList');
+    if (!financeHeadList && !financeOfficerList) {
         return;
     }
 
-    const response = await fetch('/api/biometric/unregistered-finance-officers', {
+    const response = await fetch(apiUrl('biometric/unregistered-finance-officers'), {
         headers: jsonHeaders
     });
     
     const result = await response.json();
     
     if (result.success && result.data.length > 0) {
-        let html = '<div class="list-group">';
-        result.data.forEach(fin => {
-            html += `
-                <div class="list-group-item">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${fin.name}</strong><br>
-                            <small class="text-muted">${fin.email} - ${fin.employee_number}</small>
-                        </div>
-                        <button onclick="registerFinanceOfficerFingerprint(${fin.id}, '${fin.name}')" class="btn btn-sm btn-info">
-                            <i class="fas fa-fingerprint"></i> Register
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-        html += '</div>';
-        financeList.innerHTML = html;
+        const financeHead = [];
+        const financeOfficers = result.data.filter(item => String(item.role || 'finance_officer') !== 'finance_head');
+
+        renderStatusList(financeHeadList, financeHead, 'Finance Head fingerprint registration is not required.', 'bg-secondary', 'Finance Head');
+        renderStatusList(financeOfficerList, financeOfficers, 'All finance officers have registered fingerprints!', 'bg-primary', 'Finance Officer', true);
     } else {
-        financeList.innerHTML = '<div class="alert alert-success">All finance officers have registered fingerprints!</div>';
+        renderStatusList(financeHeadList, [], 'Finance Head fingerprint registration is not required.', 'bg-secondary', 'Finance Head');
+        renderStatusList(financeOfficerList, [], 'All finance officers have registered fingerprints!', 'bg-primary', 'Finance Officer');
     }
 }
 
 // Load unregistered admins
 async function loadUnregisteredAdmins() {
-    const adminList = document.getElementById('unregisteredAdminsList');
-    if (!adminList) {
+    const hrList = document.getElementById('unregisteredHrList');
+    const branchAdminList = document.getElementById('unregisteredBranchAdminList');
+    if (!hrList && !branchAdminList) {
         return;
     }
 
-    const response = await fetch('/api/biometric/unregistered-admins', {
+    const response = await fetch(apiUrl('biometric/unregistered-admins'), {
         headers: jsonHeaders
     });
     
     const result = await response.json();
     
     if (result.success && result.data.length > 0) {
-        let html = '<div class="list-group">';
-        result.data.forEach(admin => {
-            html += `
-                <div class="list-group-item">
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <strong>${admin.name}</strong><br>
-                            <small class="text-muted">${admin.email} - ${admin.admin_level}</small>
-                        </div>
-                        <button onclick="registerAdminOfficerFingerprint(${admin.id}, '${admin.name}')" class="btn btn-sm btn-danger">
-                            <i class="fas fa-fingerprint"></i> Register
-                        </button>
-                    </div>
-                </div>
-            `;
-        });
-        html += '</div>';
-        adminList.innerHTML = html;
+        const isBranchAdmin = item => {
+            const adminType = String(item.admin_type || item.admin_level || item.role || '').toLowerCase();
+            return adminType === 'branch_admin';
+        };
+        const isHrUser = item => {
+            const adminType = String(item.admin_type || item.admin_level || item.role || '').toLowerCase();
+            return ['hr', 'super_admin', ''].includes(adminType);
+        };
+
+        const hrAdmins = result.data.filter(isHrUser);
+        const branchAdmins = result.data.filter(item => isBranchAdmin(item) && !isHrUser(item));
+
+        renderStatusList(hrList, hrAdmins, 'All Super Admin / HR users have registered fingerprints!', 'bg-secondary', 'Super Admin / HR');
+        renderStatusList(branchAdminList, branchAdmins, 'All branch admins have registered fingerprints!', 'bg-warning', 'Branch Admin', true);
     } else {
-        adminList.innerHTML = '<div class="alert alert-success">All admins have registered fingerprints!</div>';
+        renderStatusList(hrList, [], 'HR fingerprint registration is not required.', 'bg-secondary', 'HR');
+        renderStatusList(branchAdminList, [], 'All branch admins have registered fingerprints!', 'bg-warning', 'Branch Admin');
     }
 }
 
 // Register employee fingerprint
 async function registerEmployeeFingerprint(employeeId, employeeName) {
+    const confirmed = window.confirm(`Are you sure you want to register the fingerprint for ${employeeName}?`);
+    if (!confirmed) {
+        return;
+    }
+
     const fakeFingerprint = btoa('employee_fingerprint_' + Date.now());
     
-    const response = await fetch('/api/biometric/register', {
+    const response = await fetch(apiUrl('biometric/register'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -333,9 +573,14 @@ async function registerEmployeeFingerprint(employeeId, employeeName) {
 
 // Register finance officer fingerprint (Super Admin)
 async function registerFinanceOfficerFingerprint(financeId, financeName) {
+    const confirmed = window.confirm(`Are you sure you want to register the fingerprint for ${financeName}?`);
+    if (!confirmed) {
+        return;
+    }
+
     const fakeFingerprint = btoa('finance_officer_fingerprint_' + Date.now());
     
-    const response = await fetch('/api/biometric/register-finance-officer', {
+    const response = await fetch(apiUrl('biometric/register-finance-officer'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -356,9 +601,14 @@ async function registerFinanceOfficerFingerprint(financeId, financeName) {
 
 // Register admin fingerprint (Super Admin)
 async function registerAdminOfficerFingerprint(adminId, adminName) {
+    const confirmed = window.confirm(`Are you sure you want to register the fingerprint for ${adminName}?`);
+    if (!confirmed) {
+        return;
+    }
+
     const fakeFingerprint = btoa('admin_officer_fingerprint_' + Date.now());
     
-    const response = await fetch('/api/biometric/register-admin-officer', {
+    const response = await fetch(apiUrl('biometric/register-admin-officer'), {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -379,10 +629,10 @@ async function registerAdminOfficerFingerprint(adminId, adminName) {
 
 // Load all sections
 loadUnregisteredEmployees();
-if (document.getElementById('unregisteredFinanceList')) {
+if (document.getElementById('unregisteredFinanceHeadList') || document.getElementById('unregisteredFinanceOfficerList') || document.getElementById('unregisteredFinanceList')) {
     loadUnregisteredFinanceOfficers();
 }
-if (document.getElementById('unregisteredAdminsList')) {
+if (document.getElementById('unregisteredHrList') || document.getElementById('unregisteredBranchAdminList') || document.getElementById('unregisteredAdminsList')) {
     loadUnregisteredAdmins();
 }
 </script>

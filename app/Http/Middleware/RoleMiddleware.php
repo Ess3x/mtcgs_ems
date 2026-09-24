@@ -21,6 +21,6 @@ class RoleMiddleware
             return $next($request);
         }
         
-        abort(403, 'Unauthorized access.');
+        return redirect()->route('dashboard')->with('error', 'You are not authorized to access that page.');
     }
 }

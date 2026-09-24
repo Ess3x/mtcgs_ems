@@ -434,7 +434,7 @@ class PayrollComputationService
     public function processPayrollPeriodFromDTRs(PayrollPeriod $payrollPeriod)
     {
         // Find all DTRs that fall within or overlap the payroll period
-        $dtrs = DTR::where('status', 'approved')
+        $dtrs = DTR::whereIn('status', ['approved', 'pending_finance_head'])
             ->whereHas('employeeProfile', function ($query) use ($payrollPeriod) {
                 $query->where('branch_id', $payrollPeriod->branch_id);
             })

@@ -83,6 +83,22 @@
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
+                                <label for="date-of-birth" class="form-label">Date of Birth</label>
+                                <input type="date" id="date-of-birth" name="date_of_birth" class="form-control" value="{{ old('date_of_birth', optional($employee->date_of_birth)->format('Y-m-d')) }}" autocomplete="off">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="gender" class="form-label">Gender</label>
+                                <select id="gender" name="gender" class="form-select">
+                                    <option value="">-- Select Gender --</option>
+                                    <option value="Male" {{ old('gender', $employee->gender ?? '') === 'Male' ? 'selected' : '' }}>Male</option>
+                                    <option value="Female" {{ old('gender', $employee->gender ?? '') === 'Female' ? 'selected' : '' }}>Female</option>
+                                    <option value="Other" {{ old('gender', $employee->gender ?? '') === 'Other' ? 'selected' : '' }}>Other</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
                                 <label for="date-hired" class="form-label">Date Hired <span class="text-danger">*</span></label>
                                 <input type="date" id="date-hired" name="date_hired" class="form-control" value="{{ old('date_hired', optional($employee->date_hired)->format('Y-m-d')) }}" autocomplete="off" required>
                             </div>
@@ -93,9 +109,10 @@
                                         $visibleStatus = old('status', $employee->pending_status ?? $employee->status ?? 'New Hire');
                                     @endphp
                                     <option value="New Hire" {{ $visibleStatus === 'New Hire' ? 'selected' : '' }}>New Hire</option>
-                                    <option value="Regular" {{ $visibleStatus === 'Regular' ? 'selected' : '' }}>Regular</option>
-                                    <option value="1-2 Years in Service" {{ $visibleStatus === '1-2 Years in Service' ? 'selected' : '' }}>1-2 Years in Service</option>
+                                    <option value="1 Year of Service" {{ $visibleStatus === '1 Year of Service' ? 'selected' : '' }}>1 Year of Service</option>
                                     <option value="3+ Years of Service" {{ $visibleStatus === '3+ Years of Service' ? 'selected' : '' }}>3+ Years of Service</option>
+                                    <option value="Regular" {{ $visibleStatus === 'Regular' ? 'selected' : '' }} style="display:none;">Regular</option>
+                                    <option value="1-2 Years in Service" {{ $visibleStatus === '1-2 Years in Service' ? 'selected' : '' }} style="display:none;">1-2 Years in Service</option>
                                 </select>
                             </div>
                         </div>
@@ -120,6 +137,16 @@
                                 </h5>
                             </div>
                             <div class="card-body">
+                                @php
+                                    $fingerprintHistory = json_decode((string) ($employee->fingerprint_template ?? ''), true);
+                                    $registeredFingerprintCount = is_array($fingerprintHistory) && isset($fingerprintHistory['templates'])
+                                        ? count($fingerprintHistory['templates'])
+                                        : (!empty($employee->fingerprint_template) ? 1 : 0);
+                                @endphp
+                                <div class="alert alert-secondary d-flex justify-content-between align-items-center">
+                                    <span><i class="fas fa-list-ol"></i> Registered fingerprints</span>
+                                    <strong id="fingerprint-count">{{ $registeredFingerprintCount }}</strong>
+                                </div>
                                 <div class="alert alert-warning">
                                     <i class="fas fa-exclamation-triangle"></i>
                                     <strong>Important:</strong> Fingerprint registration is required for attendance tracking. Please register the employee's fingerprint now.
@@ -283,8 +310,10 @@
             scannerStatus.className = 'alert alert-info';
             scannerStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Waiting for fingerprint capture from desktop app...';
         } catch (error) {
+            const fallbackPath = '{{ env("MTCGS_ENROLL_EXE") ?: "" }}';
+            const fallbackText = fallbackPath ? ' Local fallback executable: ' + fallbackPath : '';
             scannerStatus.className = 'alert alert-danger';
-            scannerStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Could not launch the enrollment app. Please make sure the custom URI handler is installed.';
+            scannerStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Could not launch the enrollment app. Please make sure the custom URI handler is installed.' + fallbackText;
         }
     }
 
@@ -329,6 +358,10 @@
             if (result.success && result.data && result.data.fingerprint_data) {
                 const incomingData = result.data.fingerprint_data;
                 const incomingEmpNumber = String(result.data.employee_number || '').trim();
+                const registeredFinger = String(result.data.finger_name || '').trim();
+                const enrollmentAction = String(result.data.action || 'registered').trim().toLowerCase();
+                const actionText = enrollmentAction === 'updated' ? 'updated' : 'registered';
+                const fingerprintCount = Number(result.data.fingerprint_count);
                 
                 // Validate that fingerprint data is substantial
                 if (!incomingData || incomingData.trim().length < 100) {
@@ -344,16 +377,22 @@
                     clearInterval(fingerprintCheckInterval);
                     fingerprintCheckInterval = null;
                     fingerprintData.value = incomingData;
+                    if (Number.isFinite(fingerprintCount)) {
+                        document.getElementById('fingerprint-count').textContent = fingerprintCount;
+                    }
                     console.log('✓ Fingerprint data matched! Displaying in textarea.');
                     
                     fingerprintStatus.className = 'badge bg-success me-2';
-                    fingerprintStatus.innerHTML = '<i class="fas fa-check-circle"></i> Registered ✓';
+                    fingerprintStatus.innerHTML = '<i class="fas fa-check-circle"></i> ' +
+                        (registeredFinger ? registeredFinger + ' ' + actionText + ' ✓' : actionText + ' ✓');
                     registerFingerprintBtn.disabled = false;
                     registerFingerprintBtn.innerHTML = '<i class="fas fa-redo"></i> Register Again';
                     registerFingerprintBtn.classList.remove('btn-success');
                     registerFingerprintBtn.classList.add('btn-outline-warning');
                     scannerStatus.className = 'alert alert-success';
-                    scannerStatus.innerHTML = '<i class="fas fa-check-circle"></i> ✓ Fingerprint matched! Click "Register Again" to rescan if needed.';
+                    scannerStatus.innerHTML = '<i class="fas fa-check-circle"></i> ✓ ' +
+                        (registeredFinger ? registeredFinger + ' fingerprint ' + actionText + '!' : 'Fingerprint ' + actionText + '!') +
+                        ' Click "Register Again" to rescan if needed.';
                 } else {
                     // Mismatch
                     fingerprintStatus.className = 'badge bg-warning me-2';

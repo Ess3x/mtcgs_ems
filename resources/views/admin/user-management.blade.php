@@ -21,7 +21,13 @@
                             <td>{{ $finance->first_name }} {{ $finance->last_name }}<br><small>{{ $finance->user->email ?? 'N/A' }}</small></td>
                             <td>{{ $finance->branch->branch_name ?? 'N/A' }}</td>
                             <td>{{ $finance->position }}<br>{{ $finance->user->email ?? 'N/A' }}</td>
-                            <td>{{ $finance->pending_changes['first_name'] ?? '' }} {{ $finance->pending_changes['last_name'] ?? '' }}<br>{{ $finance->pending_changes['position'] ?? '' }}<br>{{ $finance->pending_changes['email'] ?? '' }}</td>
+                            <td>
+                                {{ $finance->pending_changes['first_name'] ?? '' }} {{ $finance->pending_changes['last_name'] ?? '' }}<br>
+                                {{ $finance->pending_changes['position'] ?? '' }}<br>
+                                {{ $finance->pending_changes['email'] ?? '' }}<br>
+                                Birthdate: {{ $finance->pending_changes['date_of_birth'] ?? 'Not specified' }}<br>
+                                Gender: {{ $finance->pending_changes['gender'] ?? 'Not specified' }}
+                            </td>
                             <td class="text-nowrap">
                                 <form method="POST" action="{{ route('admin.user-finance-approve', $finance->id) }}" class="d-inline">@csrf<button class="btn btn-sm btn-success" onclick="return confirm('Approve these Finance Officer changes?')"><i class="fas fa-check"></i> Approve</button></form>
                                 <form method="POST" action="{{ route('admin.user-finance-reject', $finance->id) }}" class="d-inline">@csrf<button class="btn btn-sm btn-danger" onclick="return confirm('Reject these Finance Officer changes?')"><i class="fas fa-times"></i> Reject</button></form>

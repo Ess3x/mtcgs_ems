@@ -30,30 +30,34 @@
                         @if(in_array($profile->status ?? 'New Hire', ['New Hire'], true))
                             <p class="small mb-3">You may submit a leave request, but you currently have no leave credits.</p>
                         @elseif(in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true))
-                            <p class="small mb-3">You may avail of sick, vacation, emergency, maternity, and paternity leave.</p>
+                            <p class="small mb-3">You may avail of sick, vacation, emergency, birthday, maternity, and paternity leave.</p>
                         @else
-                            <p class="small mb-3">You may avail of sick, vacation, and emergency leave based on your available credits.</p>
+                            <p class="small mb-3">You may avail of sick, vacation, emergency, and birthday leave based on your available credits.</p>
                         @endif
                         <div class="row text-center">
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Sick Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableSickLeave() }} / {{ $leaveBalance->sick_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableSickLeave() }} / {{ (int) $leaveBalance->sick_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Vacation Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableVacationLeave() }} / {{ $leaveBalance->vacation_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableVacationLeave() }} / {{ (int) $leaveBalance->vacation_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Emergency Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableEmergencyLeave() }} / {{ $leaveBalance->emergency_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableEmergencyLeave() }} / {{ (int) $leaveBalance->emergency_leave_total }} days</strong>
+                            </div>
+                            <div class="col-md-4 mb-2">
+                                <small class="d-block text-muted">Birthday Leave</small>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableBirthdayLeave() }} / {{ (int) $leaveBalance->birthday_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Maternity Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableMaternityLeave() }} / {{ $leaveBalance->maternity_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableMaternityLeave() }} / {{ (int) $leaveBalance->maternity_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Paternity Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailablePaternityLeave() }} / {{ $leaveBalance->paternity_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailablePaternityLeave() }} / {{ (int) $leaveBalance->paternity_leave_total }} days</strong>
                             </div>
                         </div>
                     </div>
@@ -69,6 +73,7 @@
                                             <option value="sick" {{ old('leave_type') === 'sick' ? 'selected' : '' }}>Sick Leave</option>
                                             <option value="vacation" {{ old('leave_type') === 'vacation' ? 'selected' : '' }}>Vacation Leave</option>
                                             <option value="emergency" {{ old('leave_type') === 'emergency' ? 'selected' : '' }}>Emergency Leave</option>
+                                            <option value="birthday" {{ old('leave_type') === 'birthday' ? 'selected' : '' }}>Birthday Leave</option>
                                             <option value="maternity" {{ old('leave_type') === 'maternity' ? 'selected' : '' }} {{ in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true) ? '' : 'disabled' }}>Maternity Leave</option>
                                             <option value="paternity" {{ old('leave_type') === 'paternity' ? 'selected' : '' }} {{ in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true) ? '' : 'disabled' }}>Paternity Leave</option>
                                         </select>
@@ -235,10 +240,40 @@
         border-color: #475569 !important;
     }
     @media (max-width: 576px) {
+        .container-fluid.px-4 {
+            padding-left: 0.75rem !important;
+            padding-right: 0.75rem !important;
+        }
+
+        .card.shadow-lg {
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        .card-header.bg-white {
+            padding: 0.9rem 1rem;
+        }
+
+        .card-header.bg-white h4 {
+            font-size: 1.1rem;
+        }
+
+        #leaveCalendar {
+            min-height: 280px;
+            overflow: hidden;
+        }
+
+        #leaveCalendar .fc {
+            font-size: 0.72rem;
+        }
+
         #leaveCalendar .fc-header-toolbar {
             display: grid;
-            grid-template-columns: 1fr auto;
+            grid-template-columns: auto auto;
+            column-gap: 0.5rem;
             row-gap: 0.5rem;
+            align-items: center;
+            margin-bottom: 0.75rem;
         }
         #leaveCalendar .fc-toolbar-chunk:nth-child(1) {
             grid-column: 1;
@@ -247,17 +282,41 @@
         #leaveCalendar .fc-toolbar-chunk:nth-child(2) {
             grid-column: 2;
             grid-row: 1;
+            justify-self: end;
         }
         #leaveCalendar .fc-toolbar-chunk:nth-child(3) {
             grid-column: 1 / -1;
             grid-row: 2;
+            justify-self: stretch;
+            display: flex;
             justify-content: flex-end;
         }
         #leaveCalendar .fc-toolbar-title {
-            font-size: 1.15rem;
+            font-size: 1.05rem;
+            white-space: normal;
+            text-align: center;
         }
         #leaveCalendar .fc-button {
-            padding: 0.35rem 0.5rem;
+            padding: 0.35rem 0.55rem;
+            font-size: 0.72rem;
+        }
+        #leaveCalendar .fc-daygrid-day-number {
+            font-size: 0.68rem;
+        }
+        #leaveCalendar .fc .fc-daygrid-day-frame {
+            min-height: 3.2rem;
+        }
+        #leaveCalendar .fc .fc-daygrid-event-harness {
+            margin-top: 0.1rem;
+        }
+        #leaveCalendar .fc .fc-event {
+            font-size: 0.55rem;
+            padding: 0.08rem 0.15rem;
+        }
+        #leaveCalendar .fc-list-table td,
+        #leaveCalendar .fc-list-table th {
+            padding-left: 0.25rem;
+            padding-right: 0.25rem;
         }
     }
 </style>

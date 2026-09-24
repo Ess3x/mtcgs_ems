@@ -31,7 +31,11 @@ class PayrollGenerationController extends Controller
             return redirect('/dashboard')->with('error', 'Unauthorized access');
         }
 
-        $approvedDTRs = DTR::where('status', 'approved')
+        $readyStatuses = $user->isFinanceHead()
+            ? ['approved', 'pending_finance_head']
+            : ['approved'];
+
+        $approvedDTRs = DTR::whereIn('status', $readyStatuses)
             ->whereDoesntHave('payrollEntry')
             ->with('employeeProfile')
             ->whereHas('employeeProfile.user', function($q) {
@@ -121,7 +125,10 @@ class PayrollGenerationController extends Controller
         }
 
         // Check if DTR is approved
-        if ($dtr->status !== 'approved') {
+        $canGenerateFromPendingFinanceHead = $user->isFinanceHead()
+            && $dtr->status === 'pending_finance_head';
+
+        if ($dtr->status !== 'approved' && !$canGenerateFromPendingFinanceHead) {
             return redirect()->back()->with('error', 'Only approved DTRs can be converted to payroll');
         }
 

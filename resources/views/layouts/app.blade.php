@@ -6,6 +6,7 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>MTCGS-EMS - @yield('title')</title>
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @stack('styles')
     <style>
         /* ===== Base ===== */
         :root {
@@ -84,6 +85,14 @@
             text-transform: uppercase;
             padding: 0.55rem 0.75rem 0.4rem;
         }
+        .nav-group-label {
+            color: rgba(255,255,255,0.46);
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.7rem 0.8rem 0.25rem;
+        }
         .sidebar .nav-link {
             color: rgba(255,255,255,0.82);
             padding: 0.66rem 0.8rem;
@@ -110,6 +119,10 @@
             background: rgba(255,255,255,0.18);
             color: #fff;
             box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1), 0 8px 18px rgba(35, 4, 49, 0.1);
+        }
+        .sidebar .nav-section-label,
+        .sidebar .nav-group-label {
+            text-shadow: 0 1px 2px rgba(35, 4, 49, 0.28);
         }
         .sidebar .badge {
             font-size: 0.68rem;
@@ -321,6 +334,45 @@
             background-color: var(--content-bg);
             color: var(--text-color);
         }
+        .modal-content,
+        .modal-header,
+        .modal-body,
+        .modal-footer {
+            background-color: #010736 !important;
+            color: #e2e8f0 !important;
+            border-color: rgba(148, 163, 184, 0.35) !important;
+        }
+        .modal-title,
+        .modal-header h5,
+        .modal-header .btn-close,
+        .modal-body .card,
+        .modal-body .card-header,
+        .modal-body .card-body,
+        .modal-body .table,
+        .modal-body .table th,
+        .modal-body .table td,
+        .modal-body p,
+        .modal-body label,
+        .modal-body strong,
+        .modal-body span {
+            color: #e2e8f0 !important;
+        }
+        .modal-header .btn-close {
+            filter: invert(1) grayscale(100%) brightness(200%);
+            opacity: 1;
+        }
+        .modal-body .card,
+        .modal-body .card-header,
+        .modal-body .card-body {
+            background-color: #010736 !important;
+            border-color: rgba(148, 163, 184, 0.35) !important;
+        }
+        .modal-body .table,
+        .modal-body .table th,
+        .modal-body .table td {
+            background-color: transparent !important;
+            color: #e2e8f0 !important;
+        }
         body.dark-mode .top-navbar { background: #1e293b; border-bottom-color: var(--border-color); }
         body.dark-mode .navbar-brand-text { color: var(--text-color); }
         body.dark-mode .top-navbar small { color: var(--muted-color); }
@@ -351,9 +403,64 @@
         body.dark-mode .table tbody td { background-color: #4647AE; border-color: rgba(255,255,255,0.18); color: #ffffff; }
         body.dark-mode .table-hover tbody tr:hover,
         body.dark-mode .table-hover tbody tr:hover td { background-color: #5556bc; color: #ffffff; }
+        body.dark-mode .modal-content {
+            background-color: #1e293b !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-color) !important;
+            box-shadow: 0 20px 45px rgba(15, 23, 42, 0.45);
+        }
+        body.dark-mode .modal-header,
+        body.dark-mode .modal-body,
+        body.dark-mode .modal-footer {
+            background-color: #1e293b !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-color) !important;
+        }
+        body.dark-mode .modal-title,
+        body.dark-mode .modal-body .card,
+        body.dark-mode .modal-body .card-header,
+        body.dark-mode .modal-body .card-body,
+        body.dark-mode .modal-body table,
+        body.dark-mode .modal-body th,
+        body.dark-mode .modal-body td,
+        body.dark-mode .modal-body p,
+        body.dark-mode .modal-body label,
+        body.dark-mode .modal-body strong {
+            color: var(--text-color) !important;
+        }
+        body.dark-mode .modal-body .card {
+            background-color: #010736 !important;
+            border-color: rgba(148, 163, 184, 0.28) !important;
+        }
+        body.dark-mode .modal-body .card-header {
+            background-color: #010736 !important;
+            color: #e2e8f0 !important;
+        }
+        body.dark-mode .modal-body .card-body {
+            background-color: #010736 !important;
+            color: #e2e8f0 !important;
+        }
+        body.dark-mode .modal-body .table td,
+        body.dark-mode .modal-body .table th {
+            color: #e2e8f0 !important;
+            background-color: transparent !important;
+        }
+        body.dark-mode .modal-body .card-body table tbody tr,
+        body.dark-mode .modal-body .card-body table tbody td,
+        body.dark-mode .modal-body .card-body table tbody th {
+            background-color: transparent !important;
+        }
         body.dark-mode .dropdown-menu { background: var(--card-bg); border-color: var(--border-color); }
         body.dark-mode .dropdown-item { color: var(--text-color); }
-        body.dark-mode .dropdown-item:hover { background: rgba(255,255,255,0.06); }
+        body.dark-mode .dropdown-item:hover,
+        body.dark-mode .dropdown-item:focus,
+        body.dark-mode .dropdown-item.active { background: #4c1d95; color: #ffffff; }
+        body.dark-mode .sidebar .nav-group-label { color: #d8b4fe; }
+        body.dark-mode .sidebar .nav-section-label { color: #f0d9ff; }
+        body.dark-mode .sidebar .nav-link { color: #f3e8ff; }
+        body.dark-mode .sidebar .nav-link:hover,
+        body.dark-mode .sidebar .nav-link:focus { background: rgba(255,255,255,0.2); color: #ffffff; }
+        body.dark-mode .sidebar .nav-link.active { background: #7e22ce; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.24), 0 8px 18px rgba(0,0,0,0.24); }
         body.dark-mode .notification-item.unread { background: rgba(220, 149, 255, 0.12); }
         body.dark-mode .form-control,
         body.dark-mode .form-select {
@@ -363,6 +470,15 @@
         }
         body.dark-mode .form-control.text-dark,
         body.dark-mode .form-select.text-dark { color: var(--text-color) !important; }
+        body.dark-mode .form-control::placeholder,
+        body.dark-mode .form-select::placeholder { color: #94a3b8; opacity: 1; }
+        body.dark-mode .border { border-color: var(--border-color) !important; }
+        body.dark-mode .btn-outline-primary { color: #d8b4fe; border-color: #c084fc; }
+        body.dark-mode .btn-outline-primary:hover,
+        body.dark-mode .btn-outline-primary:focus { background: #7e22ce; border-color: #c084fc; color: #ffffff; }
+        body.dark-mode .btn-outline-danger { color: #fda4af; border-color: #fb7185; }
+        body.dark-mode .btn-outline-danger:hover,
+        body.dark-mode .btn-outline-danger:focus { background: #be123c; border-color: #fb7185; color: #ffffff; }
         body.dark-mode .alert {
             background-color: #1e293b;
             border-color: var(--border-color);
@@ -494,22 +610,51 @@
             @if(Auth::user()->role === 'admin')
                 <div class="nav-section">
                     <div class="nav-section-label">Administration</div>
+                    <div class="nav-group-label">Organization</div>
                     @if(Auth::user()->admin_type === 'super_admin')
                         <a class="nav-link {{ request()->routeIs('admin.branches*') ? 'active' : '' }}" href="{{ route('admin.branches.index') }}">
                             <i class="fas fa-building"></i> Branches
                         </a>
                     @endif
                     @if(Auth::user()->admin_type === 'super_admin')
-                        <a class="nav-link {{ request()->routeIs('admin.user-management*') ? 'active' : '' }}" href="{{ route('admin.user-management') }}">
-                            <i class="fas fa-users-cog"></i> Users & Admin
+                        <div class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.user-management*') || request()->routeIs('admin.employees*') ? 'active' : '' }}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-users-cog"></i> Users & Admin
+                            </a>
+                            <div class="dropdown-menu">
+                                <a class="dropdown-item {{ request()->routeIs('admin.user-management*') ? 'active' : '' }}" href="{{ route('admin.user-management') }}">
+                                    Users & Admin
+                                </a>
+                                <a class="dropdown-item {{ request()->routeIs('admin.employees*') ? 'active' : '' }}" href="{{ route('admin.employees') }}">
+                                    Employee
+                                </a>
+                            </div>
+                        </div>
+                    @endif
+                    @if(Auth::user()->admin_type !== 'super_admin')
+                        <a class="nav-link {{ request()->routeIs('admin.employees*') ? 'active' : '' }}" href="{{ route('admin.employees') }}">
+                            <i class="fas fa-users"></i> Employee
                         </a>
                     @endif
-                    <a class="nav-link {{ request()->routeIs('admin.employees*') ? 'active' : '' }}" href="{{ route('admin.employees') }}">
-                        <i class="fas fa-users"></i> Employee
-                    </a>
+                    <div class="nav-group-label">Attendance &amp; DTR</div>
                     @if(Auth::user()->admin_type === 'branch_admin' || Auth::user()->role === 'branch_head')
                         <a class="nav-link {{ request()->routeIs('employee.dtr.*') ? 'active' : '' }}" href="{{ route('employee.dtr.index') }}">
                             <i class="fas fa-clock"></i> My DTR
+                        </a>
+                    @endif
+                    @if(Auth::user()->admin_type === 'super_admin' || Auth::user()->admin_type === 'branch_admin' || Auth::user()->role === 'branch_head')
+                        <a class="nav-link {{ request()->routeIs('admin.attendance-management.*') ? 'active' : '' }}" href="{{ route('admin.attendance-management.index') }}">
+                            <i class="fas fa-user-clock"></i> Attendance Management
+                            @php
+                                $pendingAttendanceAdjustments = Auth::user()->isSuperAdmin()
+                                    ? \App\Models\AttendanceLog::whereIn('override_status', ['pending_branch', 'pending_system_admin'])->count()
+                                    : \App\Models\AttendanceLog::where('override_status', 'pending_branch')
+                                        ->whereHas('employeeProfile', fn($query) => $query->where('branch_id', Auth::user()->getEffectiveBranchId()))
+                                        ->count();
+                            @endphp
+                            @if($pendingAttendanceAdjustments > 0)
+                                <span class="badge bg-warning ms-auto">{{ $pendingAttendanceAdjustments }}</span>
+                            @endif
                         </a>
                     @endif
                     <a class="nav-link {{ request()->routeIs('admin.dtr.*') ? 'active' : '' }}" href="{{ route('admin.dtr.index') }}">
@@ -519,29 +664,64 @@
                             <span class="badge bg-warning ms-auto">{{ $pendingDTRs }}</span>
                         @endif
                     </a>
+                    <div class="nav-group-label">Payroll &amp; Benefits</div>
                     <a class="nav-link {{ request()->routeIs('admin.payroll*') ? 'active' : '' }}" href="{{ route('admin.payroll.periods') }}">
                         <i class="fas fa-calculator"></i> Payroll
                     </a>
-                    <a class="nav-link {{ request()->routeIs('admin.shifts.*') ? 'active' : '' }}" href="{{ route('admin.shifts.index') }}">
-                        <i class="fas fa-calendar-days"></i> Shifts & Schedules
-                    </a>
+                    @if(Auth::user()->isSuperAdmin() || Auth::user()->role === 'branch_head' || (Auth::user()->role === 'admin' && in_array(Auth::user()->admin_type ?? '', ['hr', 'branch_admin'], true)))
+                        <a class="nav-link {{ request()->routeIs('admin.shifts.*') ? 'active' : '' }}" href="{{ route('admin.shifts.index') }}">
+                            <i class="fas fa-calendar-days"></i> Shifts & Schedules
+                        </a>
+                    @endif
                     <a class="nav-link {{ request()->routeIs('employee.payslips') ? 'active' : '' }}" href="{{ route('employee.payslips') }}">
                         <i class="fas fa-file-invoice-dollar"></i> Payslip
                     </a>
                     <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
+                    @if(Auth::user()->role === 'admin' && (Auth::user()->admin_type ?? '') === 'branch_admin')
+                        <a class="nav-link {{ request()->routeIs('cash-advances.*') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('cash-advances.index', ['scope' => 'my']) }}">
+                            <i class="fas fa-user-check"></i> My Cash Advance
+                        </a>
+                    @endif
                     @if(Auth::user()->admin_type === 'super_admin')
+                        <div class="nav-group-label">Permissions &amp; Audit</div>
+                        <a class="nav-link {{ request()->routeIs('admin.homepage.*') ? 'active' : '' }}" href="{{ route('admin.homepage.edit') }}">
+                            <i class="fas fa-house-user"></i> Homepage Management
+                        </a>
                         <a class="nav-link {{ request()->routeIs('admin.permissions') ? 'active' : '' }}" href="{{ route('admin.permissions') }}">
                             <i class="fas fa-lock-open"></i> Admin Permissions
                         </a>
                         <a class="nav-link {{ request()->routeIs('admin.authority') ? 'active' : '' }}" href="{{ route('admin.authority') }}">
                             <i class="fas fa-user-shield"></i> Employee Creation Authority
                         </a>
+                        <a class="nav-link {{ request()->routeIs('admin.leave-credits.*') ? 'active' : '' }}" href="{{ route('admin.leave-credits.index') }}">
+                            <i class="fas fa-award"></i> Leave Credits Management
+                        </a>
                         <a class="nav-link {{ request()->routeIs('admin.audit-logs') ? 'active' : '' }}" href="{{ route('admin.audit-logs') }}">
                             <i class="fas fa-history"></i> Audit Trail
                         </a>
+                        <a class="nav-link {{ request()->routeIs('admin.login-history') ? 'active' : '' }}" href="{{ route('admin.login-history') }}">
+                            <i class="fas fa-right-to-bracket"></i> Login History
+                        </a>
                     @endif
+                    @if(Auth::user()->admin_type === 'super_admin' || Auth::user()->role === 'branch_head' || (Auth::user()->role === 'admin' && Auth::user()->admin_type === 'branch_admin'))
+                        <div class="nav-group-label">Cash Management</div>
+                        <div class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.cash-charges.*') ? 'active' : '' }}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-wallet"></i> Cash Charges
+                            </a>
+                            <div class="dropdown-menu">
+                                <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && !request('scope') ? 'active' : '' }}" href="{{ route('admin.cash-charges.index') }}">
+                                    Cash Charges
+                                </a>
+                                <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
+                                    My Charges
+                                </a>
+                            </div>
+                        </div>
+                    @endif
+                    <div class="nav-group-label">Biometric &amp; Devices</div>
                     <a class="nav-link {{ request()->routeIs('admin.biometric') ? 'active' : '' }}" href="{{ route('admin.biometric') }}">
                         <i class="fas fa-fingerprint"></i> Biometric Setup
                     </a>
@@ -574,6 +754,16 @@
                     <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
+                    @if(Auth::user()->role === 'finance_officer')
+                        <a class="nav-link {{ request()->routeIs('cash-advances.*') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('cash-advances.index', ['scope' => 'my']) }}">
+                            <i class="fas fa-user-check"></i> My Cash Advance
+                        </a>
+                    @endif
+                    @if(Auth::user()->role === 'finance_officer')
+                        <a class="nav-link {{ request()->routeIs('admin.cash-charges.*') ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
+                            <i class="fas fa-wallet"></i> Cash Charges
+                        </a>
+                    @endif
                     @if(Auth::user()->isFinanceHead())
                         <a class="nav-link {{ request()->routeIs('admin.dtr.*') ? 'active' : '' }}" href="{{ route('admin.dtr.index') }}">
                             <i class="fas fa-clock"></i> DTR Management
@@ -605,6 +795,9 @@
                     <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
+                    <a class="nav-link {{ request()->routeIs('admin.cash-charges.*') ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
+                        <i class="fas fa-wallet"></i> Cash Charges
+                    </a>
                 @endif
             </div>
 
@@ -623,7 +816,10 @@
             <i class="fas fa-building"></i>
             <span class="brand-name brand-name-full">Mother Theresa Colegio Group of Schools</span>
             <span class="brand-name brand-name-short">MTCGS</span>
-            @if(session('user_branch'))
+            @php
+                $showBranchBadge = !Auth::user()->isSuperAdmin() && !(Auth::user()->role === 'admin' && in_array(Auth::user()->admin_type ?? '', ['hr'], true)) && session('user_branch');
+            @endphp
+            @if($showBranchBadge)
                 <span class="badge bg-info ms-2 d-none d-md-inline-flex align-items-center gap-1">
                     <i class="fas fa-location-dot"></i> {{ strtoupper(session('user_branch')) }} Branch
                 </span>
@@ -637,9 +833,7 @@
             <div class="dropdown">
                 <button class="btn btn-light btn-sm position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifications">
                     <i class="fas fa-bell"></i>
-                    @if($unreadNotificationCount > 0)
-                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">{{ $unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount }}</span>
-                    @endif
+                    <span id="liveNotificationBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger {{ $unreadNotificationCount > 0 ? '' : 'd-none' }}">{{ $unreadNotificationCount > 99 ? '99+' : $unreadNotificationCount }}</span>
                 </button>
                 <div class="dropdown-menu dropdown-menu-end p-0 notification-menu">
                     <div class="d-flex justify-content-between align-items-center px-3 py-2 border-bottom">
@@ -671,9 +865,21 @@
                 if (!$headerProfile && Auth::user()->role === 'admin') {
                     $headerProfile = Auth::user()->getAdminProfile();
                 }
+                $headerRoleLabel = match (Auth::user()->role) {
+                    'admin' => match (Auth::user()->admin_type ?? '') {
+                        'super_admin' => 'Super Admin',
+                        'hr' => 'HR',
+                        'branch_admin' => 'Branch Admin',
+                        default => 'Admin',
+                    },
+                    'finance_officer' => 'Finance Officer',
+                    'finance_head' => 'Finance Head',
+                    'branch_head' => 'Branch Head',
+                    default => str_replace('_', ' ', ucfirst(Auth::user()->role ?? 'User')),
+                };
                 $headerPhotoUrl = null;
                 if ($headerProfile?->profile_photo && \Illuminate\Support\Facades\Storage::disk('public')->exists($headerProfile->profile_photo)) {
-                    $headerPhotoUrl = route('profile.photo', [strtolower(class_basename($headerProfile)), $headerProfile->id]) . '?v=' . $headerProfile->updated_at?->timestamp;
+                    $headerPhotoUrl = asset('storage/' . ltrim($headerProfile->profile_photo, '/')) . '?v=' . $headerProfile->updated_at?->timestamp;
                 }
             @endphp
             <div class="dropdown">
@@ -684,7 +890,7 @@
                         <i class="fas fa-user-circle"></i>
                     @endif
                     <span class="d-none d-sm-inline">{{ Auth::user()->name }}</span>
-                    <span class="badge bg-info ms-1">{{ ucfirst(Auth::user()->role) }}</span>
+                    <span class="badge bg-info ms-1">{{ $headerRoleLabel }}</span>
                     <i class="fas fa-chevron-down ms-2 small"></i>
                 </button>
                 <ul id="profileMenu" class="dropdown-menu dropdown-menu-end">
@@ -725,6 +931,76 @@
 
     <script>
         (function () {
+            const liveUpdatesUrl = @json(route('live-updates'));
+            const refreshOnAttendanceUrl = /(^|\/)(dashboard|dtr|attendance)(\/|$)|\/finance\/employee\//i.test(window.location.pathname);
+            let latestAttendanceId = 0;
+            let liveRequestInFlight = false;
+            let attendanceRefreshQueued = false;
+            let livePollTimer = null;
+
+            function showLiveArrival(arrival) {
+                const toast = document.createElement('div');
+                toast.className = 'alert alert-success shadow position-fixed';
+                toast.style.cssText = 'right: 1rem; bottom: 1rem; z-index: 1200; max-width: 360px;';
+                toast.innerHTML = `<strong><i class="fas fa-fingerprint me-1"></i> New attendance</strong><br>${arrival.employee} (${arrival.employee_number}) at ${arrival.time || 'now'}`;
+                document.body.appendChild(toast);
+                window.setTimeout(() => toast.remove(), 6000);
+            }
+
+            async function pollLiveUpdates() {
+                if (!liveUpdatesUrl || liveRequestInFlight || document.hidden) return;
+                liveRequestInFlight = true;
+                try {
+                    const response = await fetch(`${liveUpdatesUrl}?since_id=${latestAttendanceId}`, {
+                        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                        credentials: 'same-origin',
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) {
+                        console.debug('Live updates HTTP status:', response.status);
+                        return;
+                    }
+                    const data = await response.json();
+                    const badge = document.getElementById('liveNotificationBadge');
+                    if (badge) {
+                        const count = Number(data.unread_notifications || 0);
+                        badge.textContent = count > 99 ? '99+' : count;
+                        badge.classList.toggle('d-none', count === 0);
+                    }
+                    const arrivals = Array.isArray(data.arrivals) ? data.arrivals : [];
+                    if (latestAttendanceId > 0) {
+                        arrivals.slice().reverse().forEach(showLiveArrival);
+                        if (arrivals.length > 0 && refreshOnAttendanceUrl && !attendanceRefreshQueued) {
+                            attendanceRefreshQueued = true;
+                            window.setTimeout(() => window.location.reload(), 1200);
+                        }
+                    }
+                    latestAttendanceId = Math.max(latestAttendanceId, Number(data.latest_attendance_id || 0));
+                    document.dispatchEvent(new CustomEvent('mtcgs:live-updates', { detail: data }));
+                } catch (error) {
+                    console.debug('Live updates unavailable:', error);
+                } finally {
+                    liveRequestInFlight = false;
+                    scheduleLivePoll();
+                }
+            }
+
+            function scheduleLivePoll() {
+                if (livePollTimer) window.clearTimeout(livePollTimer);
+                livePollTimer = window.setTimeout(() => {
+                    if (!document.hidden) pollLiveUpdates();
+                    else scheduleLivePoll();
+                }, 10000);
+            }
+
+            if (liveUpdatesUrl) {
+                pollLiveUpdates();
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) pollLiveUpdates();
+                });
+                window.addEventListener('pageshow', pollLiveUpdates);
+            }
+
             const menuToggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
 

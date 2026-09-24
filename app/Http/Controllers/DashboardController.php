@@ -19,6 +19,14 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
         $role = $user->role;
+        $birthdayProfile = match ($role) {
+            'employee' => $user->getEmployeeProfile(),
+            'finance_officer', 'finance_head' => $user->getFinanceProfile()?->employeeProfile,
+            'admin' => $user->getAdminProfile()?->employeeProfile,
+            'branch_head' => $user->getBranchHeadProfile()?->employeeProfile,
+            default => null,
+        };
+        view()->share('birthdayProfile', $birthdayProfile);
         
         // SUPER ADMIN
         if ($user->isSuperAdmin()) {
@@ -552,7 +560,13 @@ class DashboardController extends Controller
 
         $profile = $profileClass::findOrFail($id);
         $user = Auth::user();
-        abort_unless($profile->user_id === $user->id || $user->isAdmin(), 403);
+        $profileBranchId = $profile->branch_id ?? $profile->user?->branch_id;
+        $canViewEmployeeProfile = $profileClass === EmployeeProfile::class
+            && in_array($user->role, ['finance_officer', 'finance_head'], true)
+            && $profileBranchId === $user->getEffectiveBranchId();
+        $canViewBranchProfile = in_array($user->role, ['finance_officer', 'finance_head'], true)
+            && $profileBranchId === $user->getEffectiveBranchId();
+        abort_unless($profile->user_id === $user->id || $user->isAdmin() || $canViewBranchProfile, 403);
         abort_unless($profile->profile_photo && Storage::disk('public')->exists($profile->profile_photo), 404);
 
         return response()->file(Storage::disk('public')->path($profile->profile_photo), [

@@ -42,6 +42,11 @@ class User extends Authenticatable
     {
         return $this->hasMany(AuditLog::class);
     }
+
+    public function loginHistories()
+    {
+        return $this->hasMany(LoginHistory::class);
+    }
     
     // Helper methods para makuha ang profile ng user ayon sa role
     public function getEmployeeProfile()

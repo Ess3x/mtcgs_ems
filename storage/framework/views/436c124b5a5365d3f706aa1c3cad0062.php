@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome - MTCGS EMS</title>
+    <title><?php echo e($homepageSettings['homepage_hero_title'] ?? 'MTCGS EMS'); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -52,14 +52,14 @@
             color: var(--text);
             background:
                 linear-gradient(rgba(255, 255, 255, 0.78), rgba(250, 248, 255, 0.86)),
-                url('<?php echo e(asset('images/homepage-bg.jpg')); ?>') center center / cover no-repeat fixed;
+                url('<?php echo e($homepageSettings['homepage_background_url'] ?? asset('images/homepage-bg.jpg')); ?>') center center / cover no-repeat fixed;
             transition: color .25s ease;
         }
 
         .dark body {
             background:
                 linear-gradient(rgba(5, 4, 10, 0.82), rgba(8, 7, 15, 0.9)),
-                url('<?php echo e(asset('images/homepage-bg.jpg')); ?>') center center / cover no-repeat fixed;
+                url('<?php echo e($homepageSettings['homepage_background_url'] ?? asset('images/homepage-bg.jpg')); ?>') center center / cover no-repeat fixed;
         }
 
 
@@ -378,6 +378,32 @@
             justify-content: center;
         }
 
+        .navbar-toggler {
+            border-color: var(--border-soft);
+            color: var(--text);
+        }
+
+        .navbar-toggler:focus {
+            box-shadow: 0 0 0 0.2rem var(--accent-soft);
+        }
+
+        .navbar-toggler-icon {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='%230f172a' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        }
+
+        .dark .navbar-toggler-icon {
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='%23f8fafc' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+        }
+
+        .dark .navbar-collapse {
+            background: rgba(5, 4, 10, 0.96);
+            border-radius: 0 0 14px 14px;
+            padding: 0.75rem;
+        }
+
+        .dark .navbar .nav-link,
+        .dark .navbar .btn { color: #f8fafc !important; }
+
         @media (max-width: 575.98px) {
             .branch-row { flex-direction: column; text-align: center; }
         }
@@ -387,7 +413,7 @@
     <nav class="navbar navbar-expand-lg sticky-top shadow-sm">
         <div class="container">
             <a class="navbar-brand fw-bold d-flex align-items-center" href="<?php echo e(url('/')); ?>">
-                <img src="<?php echo e(asset('images/logo.jpg')); ?>" alt="MTCGS" style="max-height: 64px; width: auto;" onerror="this.style.display='none'">
+                <img src="<?php echo e($homepageSettings['homepage_logo_url'] ?: asset('images/logo.jpg')); ?>" alt="MTCGS" style="max-height: 64px; width: auto;" onerror="this.style.display='none'">
                 <span class="ms-2" style="font-size: 1.3rem;">MTCGS EMS</span>
             </a>
 
@@ -421,9 +447,9 @@
                 School Employee System
             </span>
             <h1 class="hero-title">
-                <span class="grad">Mother Theresa Colegio</span> Group of Schools Employee Management System
+                <span class="grad"><?php echo e($homepageSettings['homepage_hero_title'] ?? 'Mother Theresa Colegio Group of Schools Employee Management System'); ?></span>
             </h1>
-            <p class="hero-lead text-muted">Track attendance, manage leave requests, review payroll, and view branch calendars all from one system designed for school staff and administrators.</p>
+            <p class="hero-lead text-muted"><?php echo e($homepageSettings['homepage_hero_text'] ?? 'Track attendance, manage leave requests, review payroll, and view branch calendars all from one system designed for school staff and administrators.'); ?></p>
             <div class="mt-4 d-flex flex-wrap gap-3 justify-content-center">
                 <a href="<?php echo e(route('login')); ?>" class="btn btn-cta btn-lg px-4">
                     <i class="fas fa-sign-in-alt me-2"></i>Login to EMS
@@ -435,32 +461,22 @@
             <!-- Hero carousel -->
             <div id="heroCarousel" class="carousel slide hero-carousel" data-bs-ride="carousel" data-bs-interval="4000">
                 <div class="carousel-indicators">
-                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
-                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="1" aria-label="Slide 2"></button>
-                    <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="2" aria-label="Slide 3"></button>
+                    <?php $__currentLoopData = $slides; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $slide): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                        <button type="button" data-bs-target="#heroCarousel" data-bs-slide-to="<?php echo e($loop->index); ?>" class="<?php echo e($loop->first ? 'active' : ''); ?>" <?php echo e($loop->first ? 'aria-current=true' : ''); ?> aria-label="Slide <?php echo e($loop->iteration); ?>"></button>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                 </div>
                 <div class="carousel-inner">
-                    <div class="carousel-item active">
-                        <img src="https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=1400&q=80" alt="Employee Management">
-                        <div class="carousel-caption d-none d-md-block">
-                            <h3>One System for Your Whole Staff</h3>
-                            <p>Attendance, leave, and payroll unified in a single portal.</p>
+                    <?php $__empty_1 = true; $__currentLoopData = $slides; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $slide): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                        <div class="carousel-item <?php echo e($loop->first ? 'active' : ''); ?>">
+                            <img src="<?php echo e($slide['image'] ?? ''); ?>" alt="<?php echo e($slide['title'] ?? 'MTCGS EMS'); ?>">
+                            <div class="carousel-caption d-none d-md-block">
+                                <h3><?php echo e($slide['title'] ?? ''); ?></h3>
+                                <p><?php echo e($slide['text'] ?? ''); ?></p>
+                            </div>
                         </div>
-                    </div>
-                    <div class="carousel-item">
-                        <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1400&q=80" alt="Manage Leave Requests">
-                        <div class="carousel-caption d-none d-md-block">
-                            <h3>Manage Leave with Ease</h3>
-                            <p>Submit, approve, and track leave requests in real time.</p>
-                        </div>
-                    </div>
-                    <div class="carousel-item">
-                        <img src="https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=crop&w=1400&q=80" alt="Payroll and Reports">
-                        <div class="carousel-caption d-none d-md-block">
-                            <h3>Payroll Made Simple</h3>
-                            <p>Accurate payroll and reports built on your attendance data.</p>
-                        </div>
-                    </div>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                        <div class="carousel-item active"><div class="p-5 text-center">Homepage carousel content is not configured.</div></div>
+                    <?php endif; ?>
                 </div>
                 <button class="carousel-control-prev" type="button" data-bs-target="#heroCarousel" data-bs-slide="prev">
                     <span class="carousel-control-prev-icon" aria-hidden="true"></span>
@@ -485,22 +501,18 @@
             </div>
             <div class="row g-4 justify-content-center">
                 <div class="col-lg-8">
-                    <div class="branch-row mb-4">
-                        <span class="branch-avatar"><i class="fas fa-building"></i></span>
-                        <div class="branch-meta">
-                            <h5>Mother Theresa Colegio de Iriga</h5>
-                            <p class="text-muted"><i class="fas fa-location-dot me-2"></i>Iriga City, Camarines Sur</p>
+                    <?php $__empty_1 = true; $__currentLoopData = $branches; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $branch): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); $__empty_1 = false; ?>
+                        <div class="branch-row <?php echo e(!$loop->last ? 'mb-4' : ''); ?>">
+                            <span class="branch-avatar"><i class="fas fa-building"></i></span>
+                            <div class="branch-meta">
+                                <h5><?php echo e($branch->branch_name); ?></h5>
+                                <p class="text-muted"><i class="fas fa-location-dot me-2"></i><?php echo e($branch->address ?: 'Address available through branch administration'); ?></p>
+                            </div>
+                            <span class="branch-id">ID: <?php echo e($branch->branch_code); ?></span>
                         </div>
-                        <span class="branch-id">ID: 11111</span>
-                    </div>
-                    <div class="branch-row">
-                        <span class="branch-avatar"><i class="fas fa-building"></i></span>
-                        <div class="branch-meta">
-                            <h5>Mother Theresa Colegio de Buhi</h5>
-                            <p class="text-muted"><i class="fas fa-location-dot me-2"></i>Buhi, Camarines Sur</p>
-                        </div>
-                        <span class="branch-id">ID: 22222</span>
-                    </div>
+                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); if ($__empty_1): ?>
+                        <div class="alert alert-light text-center">No branches are currently published.</div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -515,7 +527,7 @@
             </div>
             <div class="row g-4 align-items-center">
                 <div class="col-lg-7">
-                    <p class="text-muted">MTCGS EMS is built to support school branches with employee attendance, leave management, payroll, and verification workflows. The system is designed for ease of use by branch admins, finance officers, and employees.</p>
+                    <p class="text-muted"><?php echo e($homepageSettings['homepage_about_text'] ?? 'MTCGS EMS is built to support school branches with employee attendance, leave management, payroll, and verification workflows. The system is designed for ease of use by branch admins, finance officers, and employees.'); ?></p>
                     <ul class="list-unstyled text-muted mt-4">
                         <li class="mb-3 about-check"><i class="fas fa-check-circle me-2"></i>Secure login and branch-based access</li>
                         <li class="mb-3 about-check"><i class="fas fa-check-circle me-2"></i>Automated leave request notifications</li>
@@ -526,7 +538,7 @@
                     <div class="row g-3">
                         <div class="col-6">
                             <div class="stat-card">
-                                <div class="num">2</div>
+                                <div class="num"><?php echo e($branches->count()); ?></div>
                                 <div class="text-muted small">Campuses</div>
                             </div>
                         </div>
@@ -568,7 +580,7 @@
                         <div class="row align-items-center gy-3">
                             <div class="col-md-8">
                                 <strong><i class="fas fa-headset me-2 text-primary"></i>Need help with your account?</strong>
-                                <p class="mb-0 text-muted mt-2">Contact your branch administrator or support at mepoopalaretnam@mycspc.edu.ph.</p>
+                                <p class="mb-0 text-muted mt-2"><?php echo e($homepageSettings['homepage_support_text'] ?? 'Contact your branch administrator or support at mepoopalaretnam@mycspc.edu.ph.'); ?></p>
                             </div>
                             <div class="col-md-4 text-md-end">
                                 <a href="<?php echo e(route('login')); ?>" class="btn btn-cta px-4">
@@ -597,6 +609,7 @@
             const icon = document.getElementById('theme-icon');
 
             function applyTheme(name){
+                if (!icon) return;
                 if(name === 'dark'){
                     document.documentElement.classList.add('dark');
                     icon.classList.remove('fa-moon');
@@ -617,7 +630,7 @@
                 applyTheme(prefersDark ? 'dark' : 'light');
             }
 
-            toggle.addEventListener('click', function(){
+            if (toggle) toggle.addEventListener('click', function(){
                 const isDark = document.documentElement.classList.contains('dark');
                 const next = isDark ? 'light' : 'dark';
                 applyTheme(next);

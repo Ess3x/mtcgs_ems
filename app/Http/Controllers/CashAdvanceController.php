@@ -14,10 +14,17 @@ class CashAdvanceController extends Controller
     public function index()
     {
         $user = Auth::user();
+        $scope = request()->query('scope');
         $query = CashAdvanceApplication::with('employeeProfile')->latest();
 
-        if ($user->role === 'employee') {
-            $profile = $user->getEmployeeProfile();
+        if ($user->role === 'employee'
+            || ($user->role === 'finance_officer' && $scope === 'my')
+            || ($user->role === 'admin' && ($user->admin_type ?? '') === 'branch_admin' && $scope === 'my')) {
+            $profile = $user->role === 'employee'
+                ? $user->getEmployeeProfile()
+                : ($user->role === 'finance_officer'
+                    ? $user->getFinanceProfile()?->employeeProfile
+                    : $user->getAdminProfile()?->employeeProfile);
             abort_unless($profile, 403);
             $query->where('employee_profile_id', $profile->id);
         } elseif ($user->role === 'finance_officer') {
@@ -25,7 +32,7 @@ class CashAdvanceController extends Controller
                 ->where('status', 'pending_fo');
         } elseif ($user->isBranchAdmin()) {
             $query->whereHas('employeeProfile', fn ($q) => $q->where('branch_id', $user->getEffectiveBranchId()))
-                ->where('status', 'pending_bh');
+                ->whereIn('status', ['pending_fo', 'pending_bh']);
         } elseif ($user->isSuperAdmin()) {
             $query->where('status', 'pending_hr');
         } elseif ($user->isFinanceHead()) {
@@ -35,20 +42,70 @@ class CashAdvanceController extends Controller
         }
 
         $applications = $query->paginate(15);
-        $profile = $user->role === 'employee' ? $user->getEmployeeProfile() : null;
+        $cashAdvanceAvailableByEmployee = [];
+        $applicationEmployeeIds = $applications->getCollection()->pluck('employee_profile_id')->filter()->unique();
+        $activeCashAdvancesByEmployee = CashAdvanceApplication::whereIn('employee_profile_id', $applicationEmployeeIds)
+            ->whereIn('status', ['approved', 'deducting'])
+            ->get()
+            ->groupBy('employee_profile_id');
 
-        return view('cash-advances.index', compact('applications', 'profile'));
+        foreach ($applicationEmployeeIds as $applicationEmployeeId) {
+            $activeBalance = $activeCashAdvancesByEmployee->get($applicationEmployeeId, collect())->sum(function ($activeCashAdvance) {
+                $amount = (float) ($activeCashAdvance->approved_amount ?: $activeCashAdvance->requested_amount);
+                $installment = (float) ($activeCashAdvance->installment_amount ?: ($amount / max(1, $activeCashAdvance->installments)));
+
+                return max(0, $amount - ($installment * (int) $activeCashAdvance->deducted_installments));
+            });
+            $cashAdvanceAvailableByEmployee[$applicationEmployeeId] = max(0, 1000 - $activeBalance);
+        }
+
+        $profile = ($user->role === 'employee'
+            || ($user->role === 'finance_officer' && $scope === 'my')
+            || ($user->role === 'admin' && ($user->admin_type ?? '') === 'branch_admin' && $scope === 'my'))
+            ? ($user->role === 'employee'
+                ? $user->getEmployeeProfile()
+                : ($user->role === 'finance_officer'
+                    ? $user->getFinanceProfile()?->employeeProfile
+                    : $user->getAdminProfile()?->employeeProfile))
+            : null;
+        $remainingCashAdvanceBalance = 0;
+        $totalCashAdvances = 0;
+
+        if ($profile) {
+            $activeCashAdvances = CashAdvanceApplication::where('employee_profile_id', $profile->id)
+                ->whereIn('status', ['approved', 'deducting'])
+                ->get();
+
+            $remainingCashAdvanceBalance = $activeCashAdvances->sum(function ($activeCashAdvance) {
+                $amount = (float) ($activeCashAdvance->approved_amount ?: $activeCashAdvance->requested_amount);
+                $installment = (float) ($activeCashAdvance->installment_amount ?: ($amount / max(1, $activeCashAdvance->installments)));
+
+                return max(0, $amount - ($installment * (int) $activeCashAdvance->deducted_installments));
+            });
+            $totalCashAdvances = $activeCashAdvances->sum(fn ($activeCashAdvance) =>
+                (float) ($activeCashAdvance->approved_amount ?: $activeCashAdvance->requested_amount)
+            );
+        }
+
+        $availableCashAdvanceBalance = max(0, 1000 - $remainingCashAdvanceBalance);
+
+        return view('cash-advances.index', compact('applications', 'profile', 'totalCashAdvances', 'remainingCashAdvanceBalance', 'availableCashAdvanceBalance', 'cashAdvanceAvailableByEmployee'));
     }
 
     public function store(Request $request)
     {
-        abort_unless(Auth::user()->role === 'employee', 403);
-        $profile = Auth::user()->getEmployeeProfile();
+        $user = Auth::user();
+        $isBranchAdminApplicant = $user->role === 'admin' && ($user->admin_type ?? '') === 'branch_admin';
+        abort_unless(in_array($user->role, ['employee', 'finance_officer'], true) || $isBranchAdminApplicant, 403);
+        $profile = $user->role === 'employee'
+            ? $user->getEmployeeProfile()
+            : ($user->role === 'finance_officer'
+                ? $user->getFinanceProfile()?->employeeProfile
+                : $user->getAdminProfile()?->employeeProfile);
         abort_unless($profile, 403);
 
         $validated = $request->validate([
             'requested_amount' => 'required|numeric|min:1|max:1000',
-            'installments' => 'required|integer|min:1|max:24',
             'purpose' => 'required|string|max:2000',
         ]);
 
@@ -56,24 +113,55 @@ class CashAdvanceController extends Controller
         $employmentStatus = strtolower((string) $profile->status);
         abort_if(in_array($employmentStatus, ['inactive', 'resigned', 'terminated'], true), 422, 'Only active employees may apply.');
 
+        $activeCashAdvances = CashAdvanceApplication::where('employee_profile_id', $profile->id)
+            ->whereIn('status', ['approved', 'deducting'])
+            ->get();
+
+        $remainingBalance = $activeCashAdvances->sum(function ($activeCashAdvance) {
+            $amount = (float) ($activeCashAdvance->approved_amount ?: $activeCashAdvance->requested_amount);
+            $installment = (float) ($activeCashAdvance->installment_amount ?: ($amount / max(1, $activeCashAdvance->installments)));
+
+            return max(0, $amount - ($installment * (int) $activeCashAdvance->deducted_installments));
+        });
+
+        $availableApplicationBalance = max(0, 1000 - $remainingBalance);
+        abort_if((float) $validated['requested_amount'] > $availableApplicationBalance, 422, 'The requested amount exceeds your available cash advance balance of ₱' . number_format($availableApplicationBalance, 2) . '.');
+
+        $installments = 2;
+
         $monthsOfService = $profile->date_hired ? $profile->date_hired->diffInMonths(now()) : 0;
         $category = $monthsOfService < 3
             ? 'new_hire_bh_fh_required'
             : ($monthsOfService < 12 ? 'regular' : 'long_service');
 
+        $initialStatus = $isBranchAdminApplicant
+            ? 'pending_hr'
+            : ($user->role === 'finance_officer' ? 'pending_bh' : 'pending_fo');
         $application = CashAdvanceApplication::create([
             'employee_profile_id' => $profile->id,
             'requested_amount' => $validated['requested_amount'],
-            'installments' => $validated['installments'],
-            'installment_amount' => round($validated['requested_amount'] / $validated['installments'], 2),
+            'installments' => $installments,
+            'installment_amount' => round($validated['requested_amount'] / $installments, 2),
             'purpose' => $validated['purpose'],
             'eligibility_category' => $category,
-            'status' => 'pending_fo',
+            'status' => $initialStatus,
         ]);
 
-        $this->notifyRole('finance_officer', $profile->branch_id, 'Cash advance application for FO review', $profile, $application, 'pending_fo');
+        if ($user->role === 'finance_officer') {
+            $this->notifyRole('admin', $profile->branch_id, 'Cash advance application for Branch Admin review', $profile, $application, 'pending_bh');
+        } elseif ($isBranchAdminApplicant) {
+            $this->notifyRole('hr', null, 'Cash advance application for Super Admin review', $profile, $application, 'pending_hr');
+        } else {
+            $this->notifyRole('finance_officer', $profile->branch_id, 'Cash advance application for FO review', $profile, $application, 'pending_fo');
+        }
 
-        return back()->with('success', 'Cash advance application submitted to the Finance Officer.');
+        $message = $isBranchAdminApplicant
+            ? 'Cash advance application submitted to the Super Admin.'
+            : ($user->role === 'finance_officer'
+                ? 'Cash advance application submitted to the Branch Admin.'
+                : 'Cash advance application submitted to the Finance Officer.');
+
+        return back()->with('success', $message);
     }
 
     public function reviewByFo(Request $request, CashAdvanceApplication $application)
@@ -122,11 +210,10 @@ class CashAdvanceController extends Controller
         abort_unless($application->status === 'pending_fh', 422);
         $validated = $request->validate([
             'decision' => 'required|in:approve,reject',
-            'approved_amount' => 'nullable|numeric|min:1|max:1000',
             'reason' => 'nullable|string|max:2000',
         ]);
         if ($validated['decision'] === 'approve') {
-            $amount = $validated['approved_amount'] ?? $application->requested_amount;
+            $amount = $application->requested_amount;
             $installments = $application->installments;
             $application->update([
                 'approved_amount' => $amount,

@@ -377,23 +377,28 @@ class DTRController extends Controller
         $hasCorrection = $request->filled('corrected_time_in')
             || $request->filled('corrected_pm_in')
             || $request->filled('corrected_time_out');
+
         $missingMorning = !$attendance->am_in && !$request->filled('corrected_time_in');
         $missingAfternoon = (!$attendance->pm_in || !$attendance->pm_out)
-            && (!$request->filled('corrected_pm_in') || !$request->filled('corrected_time_out'));
+            && !$request->filled('corrected_pm_in')
+            && !$request->filled('corrected_time_out');
+
         if (!$hasCorrection || ($dtrStatus === 'Half Day' && ($missingMorning || $missingAfternoon))) {
             return back()->with('error', 'Please enter the corrected attendance time before submitting.');
         }
 
-        if (!in_array($dtrStatus, ['Late', 'Late / Early Out', 'Early Out'], true)) {
-            return back()->with('error', 'Only late or early-out attendance can request a Present adjustment.');
+        if (!in_array($dtrStatus, ['Half Day', 'Late', 'Late / Early Out', 'Early Out'], true)) {
+            return back()->with('error', 'Only Half Day, late, or early-out attendance can request a Present adjustment.');
         }
 
         if (in_array($attendance->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true)) {
             return back()->with('error', 'This attendance adjustment is already active or approved.');
         }
 
+        $routeToSystemAdmin = $user->isBranchAdmin() || $user->role === 'branch_head';
+
         $attendance->update([
-            'override_status' => 'pending_branch',
+            'override_status' => $routeToSystemAdmin ? 'pending_system_admin' : 'pending_branch',
             'override_reason' => $request->reason,
             'corrected_time_in' => $this->correctedDateTime($attendance, $request->corrected_time_in),
             'corrected_pm_in' => $this->correctedDateTime($attendance, $request->corrected_pm_in),
@@ -402,6 +407,11 @@ class DTRController extends Controller
             'override_reviewed_by' => null,
             'override_reviewed_at' => null,
         ]);
+
+        if ($routeToSystemAdmin) {
+            $this->notifyAttendanceSystemReviewers($attendance, 'Attendance adjustment needs final approval', 'attendance_adjustment_pending_system');
+            return back()->with('success', 'Attendance adjustment request submitted for Super Admin review.');
+        }
 
         $this->notifyAttendanceBranchReviewers($attendance);
 
@@ -437,6 +447,22 @@ class DTRController extends Controller
             'attendance_adjustment_pending_branch',
             route('admin.dtr.index')
         )));
+    }
+
+    private function notifyAttendanceSystemReviewers(AttendanceLog $attendance, string $title, string $type): void
+    {
+        User::where('role', 'admin')
+            ->where(function ($query) {
+                $query->where('admin_type', 'super_admin')->orWhereNull('admin_type');
+            })
+            ->where('is_active', true)
+            ->get()
+            ->each(fn ($recipient) => $recipient->notify(new SystemNotification(
+                $title,
+                'An attendance adjustment was forwarded for final review.',
+                $type,
+                route('admin.attendance-management.index')
+            )));
     }
 
     private function notifyDTRBranchReviewers(EmployeeProfile $profile, DTR $dtr): void
@@ -596,6 +622,19 @@ class DTRController extends Controller
                 $dayData['overtime'] = 0;
             } elseif ($log) {
                 $logStatus = strtolower((string) $log->status);
+                $hasAnyAttendanceTime = (bool) ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out);
+                if (!$hasAnyAttendanceTime) {
+                    $dayData['status'] = $current->isPast() && $isWorkingDay ? 'absent' : 'pending';
+                    $dayData['am_in'] = '--';
+                    $dayData['am_out'] = '--';
+                    $dayData['pm_in'] = '--';
+                    $dayData['pm_out'] = '--';
+                    $dayData['late_minutes'] = 0;
+                    $dayData['overtime'] = 0;
+                    $days[] = $dayData;
+                    $current->addDay();
+                    continue;
+                }
                 $hasLateMinutes = (int) ($log->late_minutes ?? 0) > 0;
                 $scheduledStart = $current->copy()->setTime(7, 0, 0);
                 $isAtOrAfterScheduledStart = $log->am_in && $log->am_in->greaterThanOrEqualTo($scheduledStart);
@@ -618,7 +657,9 @@ class DTRController extends Controller
             } else {
                 $dayData['status'] = $dayData['is_weekend']
                     ? 'weekend'
-                    : ($isHoliday ? 'holiday' : ($dtrStatus === 'approved' ? 'absent' : 'empty'));
+                    : ($isHoliday
+                        ? 'holiday'
+                        : ($current->isPast() ? 'absent' : 'pending'));
             }
 
             $days[] = $dayData;

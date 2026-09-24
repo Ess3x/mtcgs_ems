@@ -3,6 +3,21 @@
 @section('title', 'Finance Dashboard')
 
 @section('content')
+@push('styles')
+<style>
+    .finance-dashboard .dashboard-stat-card { min-height: 112px; }
+    .finance-dashboard .dashboard-stat-card .card-body { display: flex; align-items: center; }
+    .finance-dashboard .dashboard-stat-card .d-flex { width: 100%; }
+    .finance-dashboard .section-card { height: 100%; }
+    .finance-dashboard .section-card .card-body { padding: 1.25rem; }
+
+    @media (max-width: 991.98px) {
+        .finance-dashboard .dashboard-stat-card { min-height: 100px; }
+    }
+</style>
+@endpush
+
+<div class="container-fluid dashboard-shell p-0 finance-dashboard">
 @php
     $financeProfile = Auth::user()->getFinanceProfile();
     $currentEmployeeProfile = $employeeProfile ?? ($financeProfile ? App\Models\EmployeeProfile::find($financeProfile->employee_profile_id) : null);
@@ -11,6 +26,7 @@
 
 <div class="container-fluid dashboard-shell p-0">
     <div id="dashboardNotificationContainer"></div>
+    @include('dashboard.birthday-banner')
 
     <!-- Header Hero -->
     <div class="card dashboard-hero mb-4" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);">
@@ -126,9 +142,8 @@
 
     <!-- Payroll Summary + My DTR Row -->
     <div class="row g-3 mb-4">
-        @if(Auth::user()->role !== 'finance_head')
-        <div class="col-lg-6">
-            <div class="card h-100">
+        <div class="col-12">
+            <div class="card section-card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span class="d-flex align-items-center gap-2">
                         <i class="fas fa-money-bill-wave text-primary"></i>
@@ -155,8 +170,9 @@
                 </div>
             </div>
         </div>
+        @if(false)
         <div class="col-lg-6">
-            <div class="card h-100">
+            <div class="card section-card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span class="d-flex align-items-center gap-2">
                         <i class="fas fa-user-clock text-primary"></i>
@@ -236,10 +252,10 @@
     </div>
 
     <!-- My DTR + Biometric Registration Row -->
-    @if(Auth::user()->role !== 'finance_head')
+    @if(false)
     <div class="row g-3 mb-4">
         <div class="col-md-6">
-            <div class="card h-100">
+            <div class="card section-card">
                 <div class="card-header d-flex align-items-center gap-2">
                     <i class="fas fa-fingerprint text-primary"></i>
                     <span>Today's Time Record</span>
@@ -274,7 +290,7 @@
             </div>
         </div>
         <div class="col-md-6">
-            <div class="card h-100">
+            <div class="card section-card">
                 <div class="card-header d-flex align-items-center gap-2">
                     <i class="fas fa-fingerprint text-success"></i>
                     <span>Employee Biometric Registration</span>
@@ -287,10 +303,11 @@
                 </div>
             </div>
         </div>
+        @endif
     </div>
-    @endif
 
     <!-- Today's Attendance Table -->
+    @if(Auth::user()->role !== 'finance_head')
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
             <span class="d-flex align-items-center gap-2">
@@ -349,6 +366,7 @@
             </table>
         </div>
     </div>
+    @endif
 
     <!-- Reports and Payroll Summary Row -->
     <div class="row g-3 mb-4">
@@ -440,6 +458,11 @@ function getOrCreateFingerprint(key, seed) {
 }
 
 async function registerFinanceFingerprint() {
+    const confirmed = window.confirm('Are you sure you want to register your fingerprint?');
+    if (!confirmed) {
+        return;
+    }
+
     const fakeFingerprint = getOrCreateFingerprint('mtcgs_finance_fingerprint', 'finance_fingerprint');
     try {
         const response = await fetch('/api/biometric/register-finance', {
@@ -488,15 +511,20 @@ async function loadUnregisteredEmployees() {
         if (result.success && result.data && result.data.length > 0) {
             let html = '<div class="list-group">';
             result.data.forEach(emp => {
+                const isRegistered = Boolean(emp.is_fingerprint_registered);
+                const buttonLabel = isRegistered ? 'Registered' : 'Unregistered';
+                const buttonClass = isRegistered ? 'btn-success' : 'btn-primary';
+                const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-fingerprint';
+
                 html += `
                     <div class="list-group-item d-flex justify-content-between align-items-center">
                         <div>
                             <div class="fw-semibold">${emp.name}</div>
                             <small class="text-muted">${emp.employee_number || 'N/A'} - ${emp.position || 'Staff'}</small>
                         </div>
-                        <button onclick="registerEmployeeFingerprint(${emp.id}, '${emp.name}')" class="btn btn-sm btn-primary">
-                            <i class="fas fa-fingerprint"></i> Register
-                        </button>
+                        <span class="badge ${isRegistered ? 'bg-success' : 'bg-primary'} text-white px-3 py-2" style="font-size: 0.8rem;">
+                            <i class="fas ${buttonIcon}"></i> ${buttonLabel}
+                        </span>
                     </div>
                 `;
             });
@@ -519,6 +547,11 @@ async function loadUnregisteredEmployees() {
 }
 
 async function registerEmployeeFingerprint(employeeId, employeeName) {
+    const confirmed = window.confirm(`Are you sure you want to register the fingerprint for ${employeeName}?`);
+    if (!confirmed) {
+        return;
+    }
+
     const fakeFingerprint = btoa('employee_fingerprint_' + Date.now());
     try {
         const response = await fetch('/api/biometric/register', {
