@@ -426,7 +426,7 @@ Route::middleware('auth')->prefix('admin')->group(function () {
 });
 
 // Finance Employee Management
-Route::middleware(['auth'])->prefix('finance')->name('finance.')->group(function () {
+Route::middleware(['auth', 'role:finance_officer,finance_head'])->prefix('finance')->name('finance.')->group(function () {
     Route::get('/employees', [App\Http\Controllers\Finance\EmployeeController::class, 'index'])->name('employees');
     Route::get('/employee/{id}/attendance', [App\Http\Controllers\Finance\EmployeeController::class, 'attendance'])->name('employee.attendance');
 });

@@ -30,30 +30,34 @@
                         @if(in_array($profile->status ?? 'New Hire', ['New Hire'], true))
                             <p class="small mb-3">You may submit a leave request, but you currently have no leave credits.</p>
                         @elseif(in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true))
-                            <p class="small mb-3">You may avail of sick, vacation, emergency, maternity, and paternity leave.</p>
+                            <p class="small mb-3">You may avail of sick, vacation, emergency, birthday, maternity, and paternity leave.</p>
                         @else
-                            <p class="small mb-3">You may avail of sick, vacation, and emergency leave based on your available credits.</p>
+                            <p class="small mb-3">You may avail of sick, vacation, emergency, and birthday leave based on your available credits.</p>
                         @endif
                         <div class="row text-center">
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Sick Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableSickLeave() }} / {{ $leaveBalance->sick_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableSickLeave() }} / {{ (int) $leaveBalance->sick_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Vacation Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableVacationLeave() }} / {{ $leaveBalance->vacation_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableVacationLeave() }} / {{ (int) $leaveBalance->vacation_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Emergency Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableEmergencyLeave() }} / {{ $leaveBalance->emergency_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableEmergencyLeave() }} / {{ (int) $leaveBalance->emergency_leave_total }} days</strong>
+                            </div>
+                            <div class="col-md-4 mb-2">
+                                <small class="d-block text-muted">Birthday Leave</small>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableBirthdayLeave() }} / {{ (int) $leaveBalance->birthday_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Maternity Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailableMaternityLeave() }} / {{ $leaveBalance->maternity_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableMaternityLeave() }} / {{ (int) $leaveBalance->maternity_leave_total }} days</strong>
                             </div>
                             <div class="col-md-4 mb-2">
                                 <small class="d-block text-muted">Paternity Leave</small>
-                                <strong class="d-block fs-5">{{ $leaveBalance->getAvailablePaternityLeave() }} / {{ $leaveBalance->paternity_leave_total }} days</strong>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailablePaternityLeave() }} / {{ (int) $leaveBalance->paternity_leave_total }} days</strong>
                             </div>
                         </div>
                     </div>
@@ -69,6 +73,7 @@
                                             <option value="sick" {{ old('leave_type') === 'sick' ? 'selected' : '' }}>Sick Leave</option>
                                             <option value="vacation" {{ old('leave_type') === 'vacation' ? 'selected' : '' }}>Vacation Leave</option>
                                             <option value="emergency" {{ old('leave_type') === 'emergency' ? 'selected' : '' }}>Emergency Leave</option>
+                                            <option value="birthday" {{ old('leave_type') === 'birthday' ? 'selected' : '' }}>Birthday Leave</option>
                                             <option value="maternity" {{ old('leave_type') === 'maternity' ? 'selected' : '' }} {{ in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true) ? '' : 'disabled' }}>Maternity Leave</option>
                                             <option value="paternity" {{ old('leave_type') === 'paternity' ? 'selected' : '' }} {{ in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true) ? '' : 'disabled' }}>Paternity Leave</option>
                                         </select>

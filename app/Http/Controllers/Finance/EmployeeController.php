@@ -15,6 +15,13 @@ class EmployeeController extends Controller
     public function __construct()
     {
         $this->middleware('auth');
+        $this->middleware(function ($request, $next) {
+            if (!$request->user()?->isFinanceOfficer()) {
+                return redirect()->route('dashboard')->with('error', 'You are not authorized to access that page.');
+            }
+
+            return $next($request);
+        });
     }
     
     private function getBranchId()

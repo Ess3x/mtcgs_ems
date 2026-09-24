@@ -532,9 +532,27 @@
                         <a class="nav-link {{ request()->routeIs('admin.authority') ? 'active' : '' }}" href="{{ route('admin.authority') }}">
                             <i class="fas fa-user-shield"></i> Employee Creation Authority
                         </a>
+                        <a class="nav-link {{ request()->routeIs('admin.leave-credits.*') ? 'active' : '' }}" href="{{ route('admin.leave-credits.index') }}">
+                            <i class="fas fa-award"></i> Leave Credits Management
+                        </a>
                         <a class="nav-link {{ request()->routeIs('admin.audit-logs') ? 'active' : '' }}" href="{{ route('admin.audit-logs') }}">
                             <i class="fas fa-history"></i> Audit Trail
                         </a>
+                    @endif
+                    @if(Auth::user()->admin_type === 'super_admin' || Auth::user()->role === 'branch_head' || (Auth::user()->role === 'admin' && Auth::user()->admin_type === 'branch_admin'))
+                        <div class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.cash-charges.*') ? 'active' : '' }}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-wallet"></i> Cash Charges
+                            </a>
+                            <div class="dropdown-menu">
+                                <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && !request('scope') ? 'active' : '' }}" href="{{ route('admin.cash-charges.index') }}">
+                                    Cash Charges
+                                </a>
+                                <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
+                                    My Charges
+                                </a>
+                            </div>
+                        </div>
                     @endif
                     <a class="nav-link {{ request()->routeIs('admin.biometric') ? 'active' : '' }}" href="{{ route('admin.biometric') }}">
                         <i class="fas fa-fingerprint"></i> Biometric Setup
