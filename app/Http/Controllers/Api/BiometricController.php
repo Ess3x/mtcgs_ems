@@ -683,7 +683,15 @@ class BiometricController extends Controller
         $decoded = json_decode($stored, true);
 
         if (is_array($decoded) && isset($decoded['templates']) && is_array($decoded['templates'])) {
-            return array_values(array_filter($decoded['templates'], 'is_string'));
+            return array_values(array_filter(array_map(static function ($template) {
+                if (is_string($template)) {
+                    return $template;
+                }
+
+                return is_array($template) && is_string($template['fingerprint_data'] ?? null)
+                    ? $template['fingerprint_data']
+                    : null;
+            }, $decoded['templates']), 'is_string'));
         }
 
         if ($stored === '') {
@@ -694,27 +702,82 @@ class BiometricController extends Controller
         return [$storedBytes !== '' ? base64_encode($storedBytes) : $stored];
     }
 
-    private function appendFingerprintTemplate($storedTemplate, $incomingTemplate): string
+    private function appendFingerprintTemplate($storedTemplate, $incomingTemplate, ?string $fingerName = null): string
     {
         $incomingBytes = $this->fingerprintBytes($incomingTemplate);
         if ($incomingBytes === '') {
             return (string) $storedTemplate;
         }
 
-        $templates = $this->fingerprintTemplateList($storedTemplate);
-        foreach ($templates as $template) {
-            if ($this->singleTemplateMatches($template, $incomingBytes)) {
-                return (string) $storedTemplate;
+        $decoded = json_decode((string) $storedTemplate, true);
+        $templates = [];
+        if (is_array($decoded) && isset($decoded['templates']) && is_array($decoded['templates'])) {
+            foreach ($decoded['templates'] as $template) {
+                if (is_string($template)) {
+                    $templates[] = ['finger_name' => null, 'fingerprint_data' => $template];
+                } elseif (is_array($template) && is_string($template['fingerprint_data'] ?? null)) {
+                    $templates[] = [
+                        'finger_name' => is_string($template['finger_name'] ?? null) ? $template['finger_name'] : null,
+                        'fingerprint_data' => $template['fingerprint_data'],
+                    ];
+                }
             }
+        } elseif ((string) $storedTemplate !== '') {
+            $storedBytes = $this->fingerprintBytes($storedTemplate);
+            $templates[] = [
+                'finger_name' => null,
+                'fingerprint_data' => $storedBytes !== '' ? base64_encode($storedBytes) : (string) $storedTemplate,
+            ];
         }
 
-        if (count($templates) === 0) {
-            return $incomingBytes;
+        $normalizedFingerName = trim((string) $fingerName);
+        if ($normalizedFingerName !== '') {
+            foreach ($templates as $index => $template) {
+                if (strcasecmp((string) ($template['finger_name'] ?? ''), $normalizedFingerName) === 0) {
+                    $templates[$index] = [
+                        'finger_name' => $normalizedFingerName,
+                        'fingerprint_data' => base64_encode($incomingBytes),
+                    ];
+
+                    return json_encode(['version' => 2, 'templates' => $templates], JSON_UNESCAPED_SLASHES);
+                }
+            }
+
+            foreach ($templates as $index => $template) {
+                if (empty($template['finger_name'])
+                    && $this->singleTemplateMatches($template['fingerprint_data'], $incomingBytes)) {
+                    $templates[$index] = [
+                        'finger_name' => $normalizedFingerName,
+                        'fingerprint_data' => base64_encode($incomingBytes),
+                    ];
+
+                    return json_encode(['version' => 2, 'templates' => $templates], JSON_UNESCAPED_SLASHES);
+                }
+            }
+
+            $templates[] = [
+                'finger_name' => $normalizedFingerName,
+                'fingerprint_data' => base64_encode($incomingBytes),
+            ];
+        } else {
+            foreach ($templates as $template) {
+                if ($this->singleTemplateMatches($template['fingerprint_data'], $incomingBytes)) {
+                    return (string) $storedTemplate;
+                }
+            }
+
+            if (count($templates) === 0) {
+                return $incomingBytes;
+            }
+
+            $templates[] = [
+                'finger_name' => null,
+                'fingerprint_data' => base64_encode($incomingBytes),
+            ];
         }
 
-        $templates[] = base64_encode($incomingBytes);
         return json_encode([
-            'version' => 1,
+            'version' => 2,
             'templates' => $templates,
         ], JSON_UNESCAPED_SLASHES);
     }
@@ -1771,7 +1834,8 @@ class BiometricController extends Controller
         if ($profile) {
             $profile->fingerprint_template = $this->appendFingerprintTemplate(
                 $profile->fingerprint_template,
-                $fingerprintTemplate
+                $fingerprintTemplate,
+                $request->input('finger_name')
             );
             $profile->is_fingerprint_registered = true;
             $profile->save();

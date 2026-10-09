@@ -1,46 +1,44 @@
-@extends('layouts.app')
+<?php $__env->startSection('title', 'View DTR'); ?>
 
-@section('title', 'View DTR')
-
-@section('content')
+<?php $__env->startSection('content'); ?>
 <div class="container-fluid py-4">
     <!-- Page Header -->
     <div class="row mb-4">
         <div class="col-12">
             <div class="dtr-page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
                 <div class="dtr-header-copy">
-                    <a href="{{ route('employee.dtr.index') }}" class="btn btn-outline-secondary btn-sm mb-3">
+                    <a href="<?php echo e(route('employee.dtr.index')); ?>" class="btn btn-outline-secondary btn-sm mb-3">
                         <i class="fas fa-arrow-left"></i> Back to DTR List
                     </a>
                     <h2 class="mb-2">DTR Details</h2>
-                    <p class="text-muted mb-0">{{ $employeeProfile->first_name }} {{ $employeeProfile->last_name }} ({{ $employeeProfile->employee_number }})</p>
+                    <p class="text-muted mb-0"><?php echo e($employeeProfile->first_name); ?> <?php echo e($employeeProfile->last_name); ?> (<?php echo e($employeeProfile->employee_number); ?>)</p>
                 </div>
                 <div class="dtr-action-group">
                     <div class="d-flex gap-2 mb-2 justify-content-end flex-wrap">
-                        <a href="{{ route('employee.dtr.download', $dtr->id) }}" class="btn btn-primary btn-sm">
+                        <a href="<?php echo e(route('employee.dtr.download', $dtr->id)); ?>" class="btn btn-primary btn-sm">
                             <i class="fas fa-file-pdf me-1"></i> Download PDF
                         </a>
-                        <a href="{{ route('employee.dtr.download-excel', $dtr->id) }}" class="btn btn-success btn-sm">
+                        <a href="<?php echo e(route('employee.dtr.download-excel', $dtr->id)); ?>" class="btn btn-success btn-sm">
                             <i class="fas fa-file-excel me-1"></i> Download Excel
                         </a>
-                        @if ($previousDTR)
-                            <a href="{{ route('employee.dtr.show', $previousDTR->id) }}" class="btn btn-outline-secondary btn-sm">
+                        <?php if($previousDTR): ?>
+                            <a href="<?php echo e(route('employee.dtr.show', $previousDTR->id)); ?>" class="btn btn-outline-secondary btn-sm">
                                 <i class="fas fa-chevron-left"></i> Previous DTR
                             </a>
-                        @else
+                        <?php else: ?>
                             <button type="button" class="btn btn-outline-secondary btn-sm" disabled>
                                 <i class="fas fa-chevron-left"></i> Previous DTR
                             </button>
-                        @endif
-                        @if ($nextDTR)
-                            <a href="{{ route('employee.dtr.show', $nextDTR->id) }}" class="btn btn-outline-primary btn-sm">
+                        <?php endif; ?>
+                        <?php if($nextDTR): ?>
+                            <a href="<?php echo e(route('employee.dtr.show', $nextDTR->id)); ?>" class="btn btn-outline-primary btn-sm">
                                 Next DTR <i class="fas fa-chevron-right"></i>
                             </a>
-                        @else
+                        <?php else: ?>
                             <button type="button" class="btn btn-outline-primary btn-sm" disabled>
                                 Next DTR <i class="fas fa-chevron-right"></i>
                             </button>
-                        @endif
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -53,14 +51,15 @@
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Period</p>
-                    <h6 class="mb-3">{{ $dtr->period_start->format('M d') }} - {{ $dtr->period_end->format('M d, Y') }}</h6>
-                    @if ($dtr->status === 'pending_finance_head')
+                    <h6 class="mb-3"><?php echo e($dtr->period_start->format('M d')); ?> - <?php echo e($dtr->period_end->format('M d, Y')); ?></h6>
+                    <?php if($dtr->status === 'pending_finance_head'): ?>
                         <span class="badge bg-info text-dark p-2">Approved by HR - Awaiting FH Computation</span>
-                    @else
-                        <span class="badge bg-{{ $dtr->status === 'draft' ? 'warning' : ($dtr->status === 'submitted' ? 'info' : ($dtr->status === 'approved' ? 'success' : 'danger')) }} p-2">
-                            {{ ucwords(str_replace('_', ' ', $dtr->status)) }}
+                    <?php else: ?>
+                        <span class="badge bg-<?php echo e($dtr->status === 'draft' ? 'warning' : ($dtr->status === 'submitted' ? 'info' : ($dtr->status === 'approved' ? 'success' : 'danger'))); ?> p-2">
+                            <?php echo e(ucwords(str_replace('_', ' ', $dtr->status))); ?>
+
                         </span>
-                    @endif
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -68,8 +67,8 @@
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Hours</p>
-                    <h4 class="mb-0">{{ number_format($stats['total_hours'], 1) }} hrs</h4>
-                    <small class="text-muted">of {{ $stats['working_days'] * 8 }} hrs expected</small>
+                    <h4 class="mb-0"><?php echo e(number_format($stats['total_hours'], 1)); ?> hrs</h4>
+                    <small class="text-muted">of <?php echo e($stats['working_days'] * 8); ?> hrs expected</small>
                 </div>
             </div>
         </div>
@@ -77,8 +76,8 @@
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Days Present</p>
-                    <h4 class="mb-0">{{ $stats['days_present'] }}/{{ $stats['working_days'] }}</h4>
-                    <small class="text-muted">{{ $stats['days_absent'] }} day(s) absent</small>
+                    <h4 class="mb-0"><?php echo e($stats['days_present']); ?>/<?php echo e($stats['working_days']); ?></h4>
+                    <small class="text-muted"><?php echo e($stats['days_absent']); ?> day(s) absent</small>
                 </div>
             </div>
         </div>
@@ -86,11 +85,11 @@
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Late</p>
-                    @if ($stats['total_late_minutes'] > 0)
-                        <span class="badge bg-danger p-2">Late: {{ $stats['total_late_minutes'] }} min</span>
-                    @else
+                    <?php if($stats['total_late_minutes'] > 0): ?>
+                        <span class="badge bg-danger p-2">Late: <?php echo e($stats['total_late_minutes']); ?> min</span>
+                    <?php else: ?>
                         <small class="text-muted">--</small>
-                    @endif
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -101,7 +100,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Absent</p>
-                    <h4 class="mb-0 text-danger">{{ $stats['days_absent'] ?? 0 }}</h4>
+                    <h4 class="mb-0 text-danger"><?php echo e($stats['days_absent'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -109,7 +108,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Paid Leave</p>
-                    <h4 class="mb-0 text-info">{{ $stats['total_paid_leave'] ?? 0 }}</h4>
+                    <h4 class="mb-0 text-info"><?php echo e($stats['total_paid_leave'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -117,7 +116,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Leave Without Pay</p>
-                    <h4 class="mb-0 text-warning">{{ $stats['total_leave_without_pay'] ?? 0 }}</h4>
+                    <h4 class="mb-0 text-warning"><?php echo e($stats['total_leave_without_pay'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -125,7 +124,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Holidays</p>
-                    <h4 class="mb-0 text-warning">{{ $stats['total_holidays'] ?? 0 }}</h4>
+                    <h4 class="mb-0 text-warning"><?php echo e($stats['total_holidays'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -133,7 +132,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Suspensions</p>
-                    <h4 class="mb-0 text-danger">{{ $stats['total_suspensions'] ?? 0 }}</h4>
+                    <h4 class="mb-0 text-danger"><?php echo e($stats['total_suspensions'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -141,7 +140,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Halfdays</p>
-                    <h4 class="mb-0 text-warning">{{ $stats['total_half_days'] ?? 0 }}</h4>
+                    <h4 class="mb-0 text-warning"><?php echo e($stats['total_half_days'] ?? 0); ?></h4>
                 </div>
             </div>
         </div>
@@ -149,7 +148,7 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Suspended Hours</p>
-                    <h4 class="mb-0 text-danger">{{ number_format($stats['total_suspended_hours'] ?? 0, 1) }} hrs</h4>
+                    <h4 class="mb-0 text-danger"><?php echo e(number_format($stats['total_suspended_hours'] ?? 0, 1)); ?> hrs</h4>
                 </div>
             </div>
         </div>
@@ -157,49 +156,49 @@
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Early Out</p>
-                    @if (($stats['total_early_out_minutes'] ?? 0) > 0)
-                        <span class="badge bg-warning text-dark p-2">Early Out: {{ $stats['total_early_out_minutes'] }} min</span>
-                    @else
+                    <?php if(($stats['total_early_out_minutes'] ?? 0) > 0): ?>
+                        <span class="badge bg-warning text-dark p-2">Early Out: <?php echo e($stats['total_early_out_minutes']); ?> min</span>
+                    <?php else: ?>
                         <small class="text-muted">--</small>
-                    @endif
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Action Buttons -->
-    @if ($dtr->status === 'draft')
+    <?php if($dtr->status === 'draft'): ?>
         <div class="row mb-4">
             <div class="col-12">
-                <form action="{{ route('employee.dtr.submit', $dtr->id) }}" method="POST" style="display: inline;">
-                    @csrf
+                <form action="<?php echo e(route('employee.dtr.submit', $dtr->id)); ?>" method="POST" style="display: inline;">
+                    <?php echo csrf_field(); ?>
                     <button type="submit" class="btn btn-success" onclick="return confirm('Are you sure you want to submit this DTR for approval?')">
                         <i class="fas fa-check"></i> Submit for Approval
                     </button>
                 </form>
             </div>
         </div>
-    @endif
+    <?php endif; ?>
 
     <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="mb-0"><i class="fas fa-signature me-2"></i>E-Signature for this DTR</h5>
-            @if ($employeeProfile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($employeeProfile->signature_path) || \App\Models\FinanceProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists() || \App\Models\AdminProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists())
+            <?php if($employeeProfile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($employeeProfile->signature_path) || \App\Models\FinanceProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists() || \App\Models\AdminProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists()): ?>
                 <span class="badge bg-success">Saved</span>
-            @else
+            <?php else: ?>
                 <span class="badge bg-warning text-dark">Not saved</span>
-            @endif
+            <?php endif; ?>
         </div>
         <div class="card-body text-center">
-            @if ($employeeProfile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($employeeProfile->signature_path) || \App\Models\FinanceProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists() || \App\Models\AdminProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists())
+            <?php if($employeeProfile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($employeeProfile->signature_path) || \App\Models\FinanceProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists() || \App\Models\AdminProfile::where('employee_profile_id', $employeeProfile->id)->whereNotNull('signature_path')->exists()): ?>
                 <div class="border rounded bg-white d-inline-block px-4 py-2">
-                    <img src="{{ route('profile.signature', $employeeProfile->id) }}" alt="Employee e-signature" style="width: 280px; max-width: 100%; height: 90px; object-fit: contain;">
+                    <img src="<?php echo e(route('profile.signature', $employeeProfile->id)); ?>" alt="Employee e-signature" style="width: 280px; max-width: 100%; height: 90px; object-fit: contain;">
                 </div>
                 <p class="text-muted small mb-0 mt-2">This signature is included in the DTR PDF.</p>
-            @else
+            <?php else: ?>
                 <p class="text-muted mb-2">No e-signature saved for this employee.</p>
-                <a href="{{ route('profile') }}" class="btn btn-outline-primary btn-sm">Save E-Signature in Profile</a>
-            @endif
+                <a href="<?php echo e(route('profile')); ?>" class="btn btn-outline-primary btn-sm">Save E-Signature in Profile</a>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -436,7 +435,7 @@
                     <h5 class="mb-0">Daily Time Records</h5>
                 </div>
                 <div class="card-body">
-                    @if ($daysInPeriod && count($daysInPeriod) > 0)
+                    <?php if($daysInPeriod && count($daysInPeriod) > 0): ?>
                         <div class="table-responsive dtr-table-scroll">
                             <table class="table dtr-table mb-0">
                                 <thead class="table-light">
@@ -449,11 +448,11 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @php
+                                    <?php
                                         $leaveStatuses = ['leave', 'leave_paid', 'on leave'];
-                                    @endphp
-                                    @foreach ($daysInPeriod as $day)
-                                        @php
+                                    ?>
+                                    <?php $__currentLoopData = $daysInPeriod; $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $day): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
+                                        <?php
                                             $isDraft = $dtr->status === 'draft';
                                             $logStatus = $day['log'] ? strtolower((string) $day['log']->status) : null;
                                             $isLWOP = $day['status'] === 'lwop';
@@ -484,109 +483,112 @@
                                                 && (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
                                                 && (!in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true) || $legacyApprovedWithoutCorrection);
                                             $correctionFormId = 'attendance-correction-' . ($day['log']->id ?? $day['date']->format('Ymd'));
-                                        @endphp
-                                        <tr class="{{ $rowClass }}">
+                                        ?>
+                                        <tr class="<?php echo e($rowClass); ?>">
                                             <td>
-                                                <strong>{{ $day['date']->format('M d, Y') }}</strong><br>
-                                                <small class="text-muted">{{ $day['day_name'] }}</small>
+                                                <strong><?php echo e($day['date']->format('M d, Y')); ?></strong><br>
+                                                <small class="text-muted"><?php echo e($day['day_name']); ?></small>
                                             </td>
-                                            <td class="text-center {{ $isLateTimeIn && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
-                                                @if (!$isLeave && !$isLWOP && !$isSuspension && $canRequestCorrection)
-                                                    @if (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
+                                            <td class="text-center <?php echo e($isLateTimeIn && !$isLeave && !$isLWOP ? 'dtr-late' : ''); ?>">
+                                                <?php if(!$isLeave && !$isLWOP && !$isSuspension && $canRequestCorrection): ?>
+                                                    <?php if(in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection): ?>
                                                         <label class="small d-block mb-1">Time-in</label>
-                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_time_in" class="form-control form-control-sm mb-1" value="{{ $day['log']->am_in?->format('H:i') }}" aria-label="Corrected time-in">
-                                                    @endif
-                                                    @if ($attendanceStatus === 'Half Day')
+                                                        <input form="<?php echo e($correctionFormId); ?>" type="time" name="corrected_time_in" class="form-control form-control-sm mb-1" value="<?php echo e($day['log']->am_in?->format('H:i')); ?>" aria-label="Corrected time-in">
+                                                    <?php endif; ?>
+                                                    <?php if($attendanceStatus === 'Half Day'): ?>
                                                         <label class="small d-block mb-1">PM time-in</label>
-                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_pm_in" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_in?->format('H:i') }}" aria-label="Corrected PM time-in">
-                                                    @endif
-                                                @else
-                                                    {{ !$isLeave && !$isLWOP && !$isSuspension ? ($day['am_in'] ?? '') : '--' }}
-                                                @endif
+                                                        <input form="<?php echo e($correctionFormId); ?>" type="time" name="corrected_pm_in" class="form-control form-control-sm mb-1" value="<?php echo e($day['log']->pm_in?->format('H:i')); ?>" aria-label="Corrected PM time-in">
+                                                    <?php endif; ?>
+                                                <?php else: ?>
+                                                    <?php echo e(!$isLeave && !$isLWOP && !$isSuspension ? ($day['am_in'] ?? '') : '--'); ?>
+
+                                                <?php endif; ?>
                                             </td>
-                                            <td class="text-center {{ $isEarlyOut && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
-                                                @if (!$isLeave && !$isLWOP && !$isSuspension && $canRequestCorrection && in_array($attendanceStatus, ['Early Out', 'Late / Early Out', 'Half Day'], true))
-                                                    <input form="{{ $correctionFormId }}" type="time" name="corrected_time_out" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_out?->format('H:i') }}" aria-label="Corrected time-out">
-                                                @else
-                                                    {{ !$isLeave && !$isLWOP && !$isSuspension ? ($day['pm_out'] ?? '') : '--' }}
-                                                @endif
+                                            <td class="text-center <?php echo e($isEarlyOut && !$isLeave && !$isLWOP ? 'dtr-late' : ''); ?>">
+                                                <?php if(!$isLeave && !$isLWOP && !$isSuspension && $canRequestCorrection && in_array($attendanceStatus, ['Early Out', 'Late / Early Out', 'Half Day'], true)): ?>
+                                                    <input form="<?php echo e($correctionFormId); ?>" type="time" name="corrected_time_out" class="form-control form-control-sm mb-1" value="<?php echo e($day['log']->pm_out?->format('H:i')); ?>" aria-label="Corrected time-out">
+                                                <?php else: ?>
+                                                    <?php echo e(!$isLeave && !$isLWOP && !$isSuspension ? ($day['pm_out'] ?? '') : '--'); ?>
+
+                                                <?php endif; ?>
                                             </td>
                                             <td class="text-center" style="
-                                                @if ($isLWOP)
+                                                <?php if($isLWOP): ?>
                                                     background-color: #ff0000; color: #B4E1EB; font-weight: 700;
-                                                @elseif ($isLeave)
+                                                <?php elseif($isLeave): ?>
                                                     background-color: #92EEFF; color: #111; font-weight: 700;
-                                                @elseif ($isHoliday && !$day['log'])
+                                                <?php elseif($isHoliday && !$day['log']): ?>
                                                     background-color: #fef3c7; color: #92400e; font-weight: 700;
-                                                @elseif ($isSuspension)
+                                                <?php elseif($isSuspension): ?>
                                                     background-color: #dc3545; color: #ffffff; font-weight: 700;
-                                                @elseif ($isHalfDay)
+                                                <?php elseif($isHalfDay): ?>
                                                     background-color: #fed7aa; color: #9a3412; font-weight: 700;
-                                                @elseif ($isAbsent)
+                                                <?php elseif($isAbsent): ?>
                                                     background-color: #ff0000; color: #111; font-weight: 700;
-                                                @elseif ($isWeekend)
+                                                <?php elseif($isWeekend): ?>
                                                     background-color: #d1d5db; color: #374151; font-weight: 700;
-                                                @elseif ($isPending)
+                                                <?php elseif($isPending): ?>
                                                     background-color: #e5e7eb; color: #4b5563; font-weight: 700;
-                                                @elseif ($isNoRecordYet)
+                                                <?php elseif($isNoRecordYet): ?>
                                                     background-color: transparent; color: transparent; font-weight: 700;
-                                                @else
+                                                <?php else: ?>
                                                     background-color: #005F02; color: #ffffff; font-weight: 700;
-                                                @endif
+                                                <?php endif; ?>
                                             ">
-                                                @if ($isLWOP)
+                                                <?php if($isLWOP): ?>
                                                     LWOP
-                                                @elseif ($isLeave)
+                                                <?php elseif($isLeave): ?>
                                                     Leave Paid
-                                                @elseif ($isSuspension)
+                                                <?php elseif($isSuspension): ?>
                                                     Suspension
-                                                @elseif ($isHoliday && !$day['log'])
+                                                <?php elseif($isHoliday && !$day['log']): ?>
                                                     Holiday
-                                                @elseif ($isHalfDay)
+                                                <?php elseif($isHalfDay): ?>
                                                     Half Day
-                                                @elseif ($isAbsent)
+                                                <?php elseif($isAbsent): ?>
                                                     Absent
-                                                @elseif ($isLate)
-                                                    {{ $attendanceStatus }}
-                                                @elseif ($isEarlyOutStatus)
+                                                <?php elseif($isLate): ?>
+                                                    <?php echo e($attendanceStatus); ?>
+
+                                                <?php elseif($isEarlyOutStatus): ?>
                                                     Early Out
-                                                @elseif ($isWeekend)
+                                                <?php elseif($isWeekend): ?>
                                                     WKD
-                                                @elseif ($isNoRecordYet)
-                                                @else
+                                                <?php elseif($isNoRecordYet): ?>
+                                                <?php else: ?>
                                                     Present
-                                                @endif
-                                                @if ($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true))
+                                                <?php endif; ?>
+                                                <?php if($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true)): ?>
                                                     <small class="d-block text-muted mt-1">Adjustment pending approval</small>
-                                                @elseif ($day['log'] && $day['log']->override_status === 'approved')
+                                                <?php elseif($day['log'] && $day['log']->override_status === 'approved'): ?>
                                                     <small class="d-block text-success mt-1">Adjusted to Present</small>
-                                                @endif
+                                                <?php endif; ?>
                                             </td>
                                             <td class="text-center">
-                                                @if ($canRequestCorrection)
-                                                    <form id="{{ $correctionFormId }}" method="POST" action="{{ route('employee.dtr.attendance.adjust-present', $day['log']->id) }}" class="dtr-correction-form">
-                                                        @csrf
+                                                <?php if($canRequestCorrection): ?>
+                                                    <form id="<?php echo e($correctionFormId); ?>" method="POST" action="<?php echo e(route('employee.dtr.attendance.adjust-present', $day['log']->id)); ?>" class="dtr-correction-form">
+                                                        <?php echo csrf_field(); ?>
                                                         <input type="text" name="reason" class="form-control form-control-sm mb-1" placeholder="Reason" required minlength="5">
                                                         <button type="submit" class="btn btn-sm btn-outline-dark">Request Attendance Correction</button>
                                                     </form>
-                                                @elseif ($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true))
+                                                <?php elseif($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true)): ?>
                                                     <small class="d-block text-muted">Adjustment pending approval</small>
-                                                @elseif ($day['log'] && $day['log']->override_status === 'approved')
+                                                <?php elseif($day['log'] && $day['log']->override_status === 'approved'): ?>
                                                     <small class="d-block text-success">Adjusted to Present</small>
-                                                @else
+                                                <?php else: ?>
                                                     --
-                                                @endif
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
-                                    @endforeach
+                                    <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
                                 </tbody>
                             </table>
                         </div>
-                    @else
+                    <?php else: ?>
                         <div class="alert alert-info">
                             <i class="fas fa-info-circle"></i> No attendance records for this period.
                         </div>
-                    @endif
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -601,7 +603,7 @@
     </script>
 
     <!-- Remarks Section -->
-    @if ($dtr->remarks)
+    <?php if($dtr->remarks): ?>
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card border-info">
@@ -609,11 +611,14 @@
                         <h6 class="mb-0">Remarks</h6>
                     </div>
                     <div class="card-body">
-                        {{ $dtr->remarks }}
+                        <?php echo e($dtr->remarks); ?>
+
                     </div>
                 </div>
             </div>
         </div>
-    @endif
+    <?php endif; ?>
 </div>
-@endsection
+<?php $__env->stopSection(); ?>
+
+<?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\xampp\htdocs\mtcgs-main_09-06-26\mtcgs-ems\resources\views/employee/dtr/show.blade.php ENDPATH**/ ?>

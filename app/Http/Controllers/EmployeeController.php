@@ -978,15 +978,36 @@ class EmployeeController extends Controller
 
     private function appendFingerprintTemplate($storedTemplate, $incomingTemplate)
     {
-        $templates = $this->fingerprintTemplateList($storedTemplate);
         $incomingBytes = $this->fingerprintBytes($incomingTemplate);
 
         if ($incomingBytes === '') {
             return $storedTemplate;
         }
 
+        $decoded = json_decode((string) $storedTemplate, true);
+        $templates = [];
+        if (is_array($decoded) && isset($decoded['templates']) && is_array($decoded['templates'])) {
+            foreach ($decoded['templates'] as $template) {
+                if (is_string($template)) {
+                    $templates[] = ['finger_name' => null, 'fingerprint_data' => $template];
+                } elseif (is_array($template) && is_string($template['fingerprint_data'] ?? null)) {
+                    $templates[] = [
+                        'finger_name' => is_string($template['finger_name'] ?? null) ? $template['finger_name'] : null,
+                        'fingerprint_data' => $template['fingerprint_data'],
+                    ];
+                }
+            }
+        } elseif ((string) $storedTemplate !== '') {
+            $templates[] = [
+                'finger_name' => null,
+                'fingerprint_data' => $this->isBinaryTemplate($storedTemplate)
+                    ? base64_encode($storedTemplate)
+                    : (string) $storedTemplate,
+            ];
+        }
+
         foreach ($templates as $template) {
-            if ($this->fingerprintBytes($template) === $incomingBytes) {
+            if ($this->fingerprintBytes($template['fingerprint_data']) === $incomingBytes) {
                 return $storedTemplate;
             }
         }
@@ -995,8 +1016,11 @@ class EmployeeController extends Controller
             return $incomingBytes;
         }
 
-        $templates[] = base64_encode($incomingBytes);
-        return json_encode(['version' => 1, 'templates' => $templates], JSON_UNESCAPED_SLASHES);
+        $templates[] = [
+            'finger_name' => null,
+            'fingerprint_data' => base64_encode($incomingBytes),
+        ];
+        return json_encode(['version' => 2, 'templates' => $templates], JSON_UNESCAPED_SLASHES);
     }
 
     private function fingerprintTemplateList($storedTemplate): array
@@ -1005,7 +1029,15 @@ class EmployeeController extends Controller
         $decoded = json_decode($stored, true);
 
         if (is_array($decoded) && isset($decoded['templates']) && is_array($decoded['templates'])) {
-            return array_values(array_filter($decoded['templates'], 'is_string'));
+            return array_values(array_filter(array_map(static function ($template) {
+                if (is_string($template)) {
+                    return $template;
+                }
+
+                return is_array($template) && is_string($template['fingerprint_data'] ?? null)
+                    ? $template['fingerprint_data']
+                    : null;
+            }, $decoded['templates']), 'is_string'));
         }
 
         if ($stored === '') {

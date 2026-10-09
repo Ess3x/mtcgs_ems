@@ -20,6 +20,7 @@ class BiometricDeviceAuthenticator
         'nonce',
         'action',
         'fingerprint_data',
+        'finger_name',
         'branch',
         'attendance_timestamp',
     ];
@@ -98,6 +99,9 @@ class BiometricDeviceAuthenticator
 
         foreach (self::SIGNED_FIELDS as $field) {
             $value = $request->input($field);
+            if ($field === 'finger_name' && !filled($value)) {
+                continue;
+            }
             $values[] = is_scalar($value) ? (string) $value : '';
         }
 

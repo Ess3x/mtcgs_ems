@@ -48,9 +48,12 @@ class BiometricDeviceMetadataTest extends TestCase
             $payload['nonce'] ?? null,
             $payload['action'] ?? null,
             $payload['fingerprint_data'] ?? null,
-            $payload['branch'] ?? null,
-            $payload['attendance_timestamp'] ?? null,
         ];
+        if (isset($payload['finger_name']) && trim((string) $payload['finger_name']) !== '') {
+            $values[] = $payload['finger_name'];
+        }
+        $values[] = $payload['branch'] ?? null;
+        $values[] = $payload['attendance_timestamp'] ?? null;
         $payload['signature'] = hash_hmac(
             'sha256',
             implode('|', array_map(static fn ($value) => is_scalar($value) ? (string) $value : '', $values)),
@@ -100,6 +103,97 @@ class BiometricDeviceMetadataTest extends TestCase
         $this->assertSame(
             'Buhi',
             cache()->get('fingerprint_temp_NEW-BUHI-EMPLOYEE')['branch']
+        );
+    }
+
+    public function test_enrolling_again_updates_the_existing_named_finger_slot(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-FINGER-SLOTS',
+            'branch_name' => 'Finger Slot Test Branch',
+            'address' => 'Finger Slot Test Address',
+        ]);
+        $user = User::create([
+            'name' => 'Finger Slot Employee',
+            'email' => 'finger.slot.employee@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'employee',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $employee = EmployeeProfile::create([
+            'user_id' => $user->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'EMP-FINGER-SLOTS',
+            'first_name' => 'Finger',
+            'last_name' => 'Slot',
+            'position' => 'Staff',
+            'date_hired' => now(),
+            'is_fingerprint_registered' => false,
+        ]);
+        $device = Device::create([
+            'mac_address' => 'AA-BB-CC-DD-EE-FF',
+            'serial_number' => 'SERIAL-FINGER-SLOTS-001',
+            'api_secret' => self::DEVICE_SECRET,
+            'device_name' => 'Finger Slot Test Scanner',
+            'device_type' => 'computer',
+            'branch_id' => $branch->id,
+            'status' => 'active',
+        ]);
+
+        $registrations = [
+            ['finger_name' => 'Left Thumb', 'fingerprint_data' => base64_encode(str_repeat('left-thumb-first', 10))],
+            ['finger_name' => 'Right Thumb', 'fingerprint_data' => base64_encode(str_repeat('right-thumb', 10))],
+            ['finger_name' => 'Left Thumb', 'fingerprint_data' => base64_encode(str_repeat('left-thumb-updated', 10))],
+        ];
+        $tamperedNamePayload = $this->signedDevicePayload([
+            'employee_number' => $employee->employee_number,
+            'fingerprint_data' => base64_encode(str_repeat('tampered-finger-name', 10)),
+            'finger_name' => 'Left Thumb',
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'finger-slot-tampered-name',
+        ], 'POST', '/api/fingerprint-register-temp');
+        $tamperedNamePayload['finger_name'] = 'Right Thumb';
+        $tamperedNameResponse = (new BiometricController())->registerFingerprintTemp(
+            Request::create('/api/fingerprint-register-temp', 'POST', $tamperedNamePayload)
+        );
+        $this->assertSame(401, $tamperedNameResponse->getStatusCode(), $tamperedNameResponse->content());
+
+        foreach ($registrations as $index => $registration) {
+            $payload = $this->signedDevicePayload([
+                'employee_number' => $employee->employee_number,
+                'fingerprint_data' => $registration['fingerprint_data'],
+                'finger_name' => $registration['finger_name'],
+                'device_serial' => $device->serial_number,
+                'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+                'device_id' => (string) $device->id,
+                'mac_address' => 'AA:BB:CC:DD:EE:FF',
+                'timestamp' => now()->toIso8601String(),
+                'nonce' => 'finger-slot-enrollment-' . $index,
+            ], 'POST', '/api/fingerprint-register-temp');
+
+            $response = (new BiometricController())->registerFingerprintTemp(
+                Request::create('/api/fingerprint-register-temp', 'POST', $payload)
+            );
+
+            $this->assertSame(200, $response->getStatusCode(), $response->content());
+        }
+
+        $savedTemplates = json_decode($employee->fresh()->fingerprint_template, true);
+        $this->assertSame(2, count($savedTemplates['templates']));
+        $this->assertEqualsCanonicalizing(
+            ['Left Thumb', 'Right Thumb'],
+            array_column($savedTemplates['templates'], 'finger_name')
+        );
+        $this->assertSame(
+            2,
+            cache()->get('fingerprint_temp_' . $employee->employee_number)['fingerprint_count']
         );
     }
 
