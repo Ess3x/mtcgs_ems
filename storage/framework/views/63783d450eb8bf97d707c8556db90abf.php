@@ -14,6 +14,35 @@
 
     <div class="card">
         <div class="card-body">
+            <?php if(session('new_device_credential')): ?>
+                <div class="alert alert-warning" role="alert">
+                    <strong>Save this device credential now.</strong> It is shown only once. Use it when building the installer for this device.
+                    <div class="input-group mt-2">
+                        <input id="device-credential" class="form-control font-monospace" value="<?php echo e(session('new_device_credential')); ?>" readonly>
+                        <button class="btn btn-outline-secondary" type="button" data-copy-credential>Copy</button>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <strong>Biometric API credential:</strong>
+                    <span class="badge <?php echo e($device->api_secret ? 'bg-success' : 'bg-warning text-dark'); ?>">
+                        <?php echo e($device->api_secret ? 'Provisioned' : 'Not provisioned'); ?>
+
+                    </span>
+                    <div class="small text-muted">The secret is not displayed again. Rotating it immediately disables the old installer credential.</div>
+                </div>
+                <button type="button" class="btn btn-outline-danger btn-sm"
+                    data-rotate-credential
+                    data-url="<?php echo e(route('admin.devices.credential.rotate', $device)); ?>"
+                    data-csrf="<?php echo e(csrf_token()); ?>">
+                    <?php echo e($device->api_secret ? 'Rotate Credential' : 'Generate Credential'); ?>
+
+                </button>
+            </div>
+            <div class="alert alert-warning d-none" role="alert" data-credential-result></div>
+
             <dl class="row mb-0">
                 <dt class="col-sm-4">Device Name</dt>
                 <dd class="col-sm-8"><?php echo e($device->device_name); ?></dd>
@@ -68,5 +97,62 @@
     </div>
 </div>
 <?php $__env->stopSection(); ?>
+
+<?php $__env->startPush('scripts'); ?>
+<script>
+document.querySelector('[data-rotate-credential]')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    if (!confirm('Generate a new credential? The existing installer will stop working immediately.')) return;
+
+    button.disabled = true;
+    try {
+        const response = await fetch(button.dataset.url, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': button.dataset.csrf,
+            },
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.message || 'Could not rotate device credential.');
+
+        const result = document.querySelector('[data-credential-result]');
+        result.classList.remove('d-none');
+        result.replaceChildren();
+        const notice = document.createElement('strong');
+        notice.textContent = 'Copy and save this credential now.';
+        result.append(notice, document.createTextNode(' It will not be shown again. Update this device\'s installer before using it.'));
+
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'input-group mt-2';
+        const input = document.createElement('input');
+        input.className = 'form-control font-monospace';
+        input.readOnly = true;
+        input.value = payload.credential;
+        const copyButton = document.createElement('button');
+        copyButton.className = 'btn btn-outline-secondary';
+        copyButton.type = 'button';
+        copyButton.textContent = 'Copy';
+        copyButton.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(input.value);
+        });
+        inputGroup.append(input, copyButton);
+        result.append(inputGroup);
+        button.textContent = 'Credential Rotated';
+    } catch (error) {
+        alert(error.message);
+    } finally {
+        button.disabled = false;
+    }
+});
+
+document.querySelectorAll('[data-copy-credential]').forEach(button => {
+    button.addEventListener('click', async () => {
+        const input = button.parentElement.querySelector('input');
+        await navigator.clipboard.writeText(input.value);
+    });
+});
+</script>
+<?php $__env->stopPush(); ?>
 
 <?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH C:\xampp\htdocs\mtcgs-main_09-06-26\mtcgs-ems\resources\views/admin/devices/show.blade.php ENDPATH**/ ?>

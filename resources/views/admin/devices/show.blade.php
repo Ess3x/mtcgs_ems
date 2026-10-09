@@ -115,14 +115,27 @@ document.querySelector('[data-rotate-credential]')?.addEventListener('click', as
 
         const result = document.querySelector('[data-credential-result]');
         result.classList.remove('d-none');
-        result.innerHTML = '<strong>Copy and save this credential now.</strong> It will not be shown again. Update this device\\'s installer before using it.<div class="input-group mt-2"><input class="form-control font-monospace" readonly><button class="btn btn-outline-secondary" type="button" data-copy-credential>Copy</button></div>';
-        result.querySelector('input').value = payload.credential;
-        button.textContent = 'Credential Rotated';
-        document.querySelectorAll('[data-copy-credential]').forEach(copyButton => {
-            copyButton.addEventListener('click', async () => {
-                await navigator.clipboard.writeText(copyButton.parentElement.querySelector('input').value);
-            });
+        result.replaceChildren();
+        const notice = document.createElement('strong');
+        notice.textContent = 'Copy and save this credential now.';
+        result.append(notice, document.createTextNode(' It will not be shown again. Update this device\'s installer before using it.'));
+
+        const inputGroup = document.createElement('div');
+        inputGroup.className = 'input-group mt-2';
+        const input = document.createElement('input');
+        input.className = 'form-control font-monospace';
+        input.readOnly = true;
+        input.value = payload.credential;
+        const copyButton = document.createElement('button');
+        copyButton.className = 'btn btn-outline-secondary';
+        copyButton.type = 'button';
+        copyButton.textContent = 'Copy';
+        copyButton.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(input.value);
         });
+        inputGroup.append(input, copyButton);
+        result.append(inputGroup);
+        button.textContent = 'Credential Rotated';
     } catch (error) {
         alert(error.message);
     } finally {

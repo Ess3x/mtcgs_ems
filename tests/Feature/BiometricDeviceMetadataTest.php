@@ -60,6 +60,49 @@ class BiometricDeviceMetadataTest extends TestCase
         return $payload;
     }
 
+    public function test_authenticated_buhi_device_uses_its_registered_branch_for_new_enrollment(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-ENROLL-BUHI',
+            'branch_name' => 'Buhi',
+            'address' => 'Buhi Test Address',
+        ]);
+        $device = Device::create([
+            'mac_address' => 'AA-BB-CC-DD-EE-FF',
+            'serial_number' => 'SERIAL-ENROLL-BUHI-001',
+            'api_secret' => self::DEVICE_SECRET,
+            'device_name' => 'Buhi Enrollment Scanner',
+            'device_type' => 'computer',
+            'branch_id' => $branch->id,
+            'status' => 'active',
+        ]);
+
+        $payload = $this->signedDevicePayload([
+            'employee_number' => 'NEW-BUHI-EMPLOYEE',
+            'fingerprint_data' => base64_encode(str_repeat('valid-template-data', 10)),
+            'first_name' => 'New',
+            'last_name' => 'Employee',
+            'branch' => 'Buhi Branch',
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'new-buhi-enrollment-nonce',
+        ], 'POST', '/api/fingerprint-register-temp');
+
+        $response = (new BiometricController())->registerFingerprintTemp(
+            Request::create('/api/fingerprint-register-temp', 'POST', $payload)
+        );
+
+        $this->assertSame(200, $response->getStatusCode(), $response->content());
+        $this->assertFalse(json_decode($response->content(), true)['database_saved']);
+        $this->assertSame(
+            'Buhi',
+            cache()->get('fingerprint_temp_NEW-BUHI-EMPLOYEE')['branch']
+        );
+    }
+
     public function test_device_templates_are_branch_scoped_and_cross_branch_clock_is_rejected(): void
     {
         $iriga = Branch::create([

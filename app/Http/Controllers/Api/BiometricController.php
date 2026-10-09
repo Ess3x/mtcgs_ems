@@ -1729,6 +1729,9 @@ class BiometricController extends Controller
             if (!$profile) {
                 $profile = AdminProfile::where('employee_number', $employeeNumber)->first();
             }
+            if (!$profile) {
+                $profile = BranchHeadProfile::where('employee_number', $employeeNumber)->first();
+            }
 
             if (!$profile && $request->filled('first_name') && $request->filled('last_name')) {
                 $findByName = function ($model) use ($request) {
@@ -1739,7 +1742,8 @@ class BiometricController extends Controller
 
                 $profile = $findByName(EmployeeProfile::class)
                     ?? $findByName(FinanceProfile::class)
-                    ?? $findByName(AdminProfile::class);
+                    ?? $findByName(AdminProfile::class)
+                    ?? $findByName(BranchHeadProfile::class);
             }
 
             if ($profile) {
@@ -1749,8 +1753,6 @@ class BiometricController extends Controller
 
         }
 
-        $requestedBranchName = strtolower(trim((string) $request->input('branch')));
-        $deviceBranchName = strtolower(trim((string) $device->branch?->branch_name));
         $profileBranchId = $profile?->branch_id;
 
         if ($profile && ($profileBranchId === null || (int) $profileBranchId !== (int) $device->branch_id)) {
@@ -1758,14 +1760,6 @@ class BiometricController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'This device belongs to ' . $device->branch?->branch_name . ' branch and this user cannot enroll here.',
-            ], 403);
-        }
-
-        if (!$profile && ($requestedBranchName === '' || $deviceBranchName !== $requestedBranchName)) {
-            $this->clearFingerprintTempCache($request);
-            return response()->json([
-                'success' => false,
-                'message' => 'This enrollment device is restricted to ' . $device->branch?->branch_name . '.',
             ], 403);
         }
 
@@ -1794,6 +1788,7 @@ class BiometricController extends Controller
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
             'email' => $request->email,
+            'branch' => $device->branch?->branch_name,
             'finger_name' => $request->finger_name,
             'device_serial' => $request->device_serial,
             'mac_address' => $request->mac_address,
