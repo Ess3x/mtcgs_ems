@@ -22,4 +22,11 @@ class NotificationController extends Controller
 
         return back();
     }
+
+    public function destroy(string $notification): RedirectResponse
+    {
+        Auth::user()->notifications()->findOrFail($notification)->delete();
+
+        return back();
+    }
 }

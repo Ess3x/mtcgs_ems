@@ -11,11 +11,14 @@ use App\Models\SssContribution;
 use App\Models\PhilhealthContribution;
 use App\Models\PagibigContribution;
 use App\Models\CashAdvanceApplication;
+use App\Models\CashCharge;
 use App\Models\TaxTable;
 use Carbon\Carbon;
 
 class PayrollComputationService
 {
+    public const SUSPENSION_HOURLY_RATE = 60.0;
+
     /**
      * Generate payroll entry from approved DTR
      */
@@ -24,16 +27,17 @@ class PayrollComputationService
         $employeeProfile = $dtr->employeeProfile;
         $calculation = $this->buildPayrollCalculation($dtr, $employeeProfile);
         $existing = PayrollEntry::where('dtr_id', $dtr->id)->first();
-        $cashAdvance = null;
-        if (!$existing || (float) ($existing->cash_advance_deduction ?? 0) <= 0) {
-            $cashAdvance = CashAdvanceApplication::where('employee_profile_id', $employeeProfile->id)
-                ->whereIn('status', ['approved', 'deducting'])
-                ->whereColumn('deducted_installments', '<', 'installments')
-                ->orderBy('fh_reviewed_at')
-                ->first();
-        }
-        $cashAdvanceDeduction = $cashAdvance ? (float) $cashAdvance->installment_amount : (float) ($existing->cash_advance_deduction ?? 0);
-        $totalDeductions = (float) $calculation['total_deductions'] + $cashAdvanceDeduction;
+        $cashAdvances = CashAdvanceApplication::eligibleForPayrollCutoff(
+            $employeeProfile->id,
+            $payrollPeriod->start_date,
+            $payrollPeriod->end_date
+        )->orderBy('fh_reviewed_at')->orderBy('created_at')->get();
+        $cashAdvanceDeduction = $cashAdvances->sum(fn ($cashAdvance) =>
+            (float) ($cashAdvance->approved_amount ?: $cashAdvance->requested_amount)
+        ) ?: (float) ($existing->cash_advance_deduction ?? 0);
+        $cashCharge = $this->cashChargeDeductionForPayroll($employeeProfile->id, $payrollPeriod);
+        $cashChargeDeduction = $cashCharge['amount'];
+        $totalDeductions = (float) $calculation['total_deductions'] + $cashAdvanceDeduction + $cashChargeDeduction;
 
         $payload = [
             'branch_id' => $employeeProfile?->branch_id,
@@ -51,26 +55,22 @@ class PayrollComputationService
             'pagibig_contribution' => $calculation['pagibig_deduction'],
             'withholding_tax' => $calculation['withholding_tax'],
             'cash_advance_deduction' => $cashAdvanceDeduction,
+            'cash_charge_id' => $cashCharge['id'],
+            'cash_charge_deduction' => $cashChargeDeduction,
             'total_deductions' => $totalDeductions,
             'net_pay' => (float) $calculation['gross_pay'] - $totalDeductions,
             'status' => 'draft',
             'payroll_breakdown' => json_encode(array_merge($calculation['breakdown'], [
                 'cash_advance_deduction' => $cashAdvanceDeduction,
+                'cash_charge_id' => $cashCharge['id'],
+                'cash_charge_deduction' => $cashChargeDeduction,
             ])),
         ];
 
         if ($existing) {
             $existing->fill($payload);
             $existing->save();
-            if ($cashAdvance) {
-                $deducted = $cashAdvance->deducted_installments + 1;
-                $cashAdvance->update([
-                    'deducted_installments' => $deducted,
-                    'status' => $deducted >= $cashAdvance->installments ? 'completed' : 'deducting',
-                    'deduction_started_at' => $cashAdvance->deduction_started_at ?: now(),
-                    'completed_at' => $deducted >= $cashAdvance->installments ? now() : null,
-                ]);
-            }
+            $this->recordCashAdvanceInstallments($cashAdvances);
             return $existing;
         }
 
@@ -83,17 +83,55 @@ class PayrollComputationService
             $payload
         );
 
-        if ($cashAdvance) {
-            $deducted = $cashAdvance->deducted_installments + 1;
-            $cashAdvance->update([
-                'deducted_installments' => $deducted,
-                'status' => $deducted >= $cashAdvance->installments ? 'completed' : 'deducting',
-                'deduction_started_at' => $cashAdvance->deduction_started_at ?: now(),
-                'completed_at' => $deducted >= $cashAdvance->installments ? now() : null,
-            ]);
-        }
+        $this->recordCashAdvanceInstallments($cashAdvances);
 
         return $payrollEntry;
+    }
+
+    private function recordCashAdvanceInstallments($cashAdvances): void
+    {
+        foreach ($cashAdvances as $cashAdvance) {
+            $cashAdvance->update([
+                'deducted_installments' => (int) $cashAdvance->installments,
+                'status' => 'completed',
+                'deduction_started_at' => $cashAdvance->deduction_started_at ?: now(),
+                'completed_at' => now(),
+            ]);
+        }
+    }
+
+    public function cashChargeDeductionForPayroll(int $employeeProfileId, PayrollPeriod $payrollPeriod): array
+    {
+        $cashCharge = CashCharge::where('employee_profile_id', $employeeProfileId)
+            ->where('status', 'approved')
+            ->whereNotNull('approved_at')
+            ->orderByDesc('approved_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if (!$cashCharge) {
+            return ['id' => null, 'amount' => 0.0];
+        }
+
+        $totalBalance = (float) $cashCharge->amount;
+        $installment = (float) ($cashCharge->installment_per_cutoff ?: ($totalBalance / 2));
+        $previousDeductions = PayrollEntry::where('employee_profile_id', $employeeProfileId)
+            ->where('cash_charge_id', $cashCharge->id)
+            ->whereHas('payrollPeriod', function ($query) use ($payrollPeriod, $cashCharge) {
+                $query->whereDate('end_date', '<', $payrollPeriod->start_date)
+                    ->where('status', 'completed')
+                    ->whereNotNull('approved_at')
+                    ->whereNotNull('hr_approved_at')
+                    ->whereNotNull('branch_approved_at')
+                    ->where('admin_approval_stage', 'bh_approved')
+                    ->whereNull('correction_stage');
+            })
+            ->sum('cash_charge_deduction');
+
+        return [
+            'id' => $cashCharge->id,
+            'amount' => round(min($installment, max(0, $totalBalance - (float) $previousDeductions)), 2),
+        ];
     }
 
     public function computePayrollForDTR(DTR $dtr)
@@ -190,11 +228,22 @@ class PayrollComputationService
         return (float) $monthlySalary;
     }
 
+    public function calculateHalfDayDeduction(int $halfDayCount, float $dailyRate): float
+    {
+        return max(0, $halfDayCount) * max(0, $dailyRate) * 0.5;
+    }
+
+    public function calculateSuspensionPay(float $hours): float
+    {
+        return round(max(0, $hours) * self::SUSPENSION_HOURLY_RATE, 2);
+    }
+
     private function buildPayrollCalculation(DTR $dtr, $employeeProfile)
     {
         // Calculate all components using the same DTR breakdown as the review screen.
         $breakdown = $dtr->getCalculationBreakdown();
         $daysWorked = (int) ($breakdown['days_present'] ?? 0);
+        $halfDayCount = (int) ($breakdown['half_day_days'] ?? 0);
         $daysAbsent = (int) ($breakdown['days_absent'] ?? 0);
         $paidLeaveDays = (int) ($breakdown['paid_leave'] ?? 0);
         $leaveWithoutPayDays = (int) ($breakdown['leave_without_pay'] ?? 0);
@@ -206,11 +255,12 @@ class PayrollComputationService
         $basicPay = $this->resolveBasicPay($monthlySalary, $daysWorked);
         $workingDays = max(1, $dtr->getWorkingDays());
         $dailyRate = $basicPay / $workingDays;
+        $halfDayDeduction = $this->calculateHalfDayDeduction($halfDayCount, $dailyRate);
 
         // Calculate deductions
-        $lateDeduction = $this->calculateLateDeduction($lateMinutes, $dailyRate);
+        $lateDeduction = $this->calculateLateDeduction($lateMinutes);
         $earlyOutMinutes = (int) ($breakdown['early_out_minutes'] ?? $dtr->getTotalEarlyOutMinutes());
-        $earlyOutDeduction = $this->calculateEarlyOutDeduction($earlyOutMinutes, $dailyRate);
+        $earlyOutDeduction = $this->calculateEarlyOutDeduction($earlyOutMinutes);
         $absentDeduction = $this->calculateAbsentDeduction($daysAbsent, $dailyRate);
         $leaveWithoutPayDeduction = $this->calculateAbsentDeduction($leaveWithoutPayDays, $dailyRate);
         $leaveDeduction = $this->calculateLeaveDeduction($paidLeaveDays, $dailyRate);
@@ -233,7 +283,7 @@ class PayrollComputationService
 
         // Total deductions
         $totalDeductions = $sssDeduction + $philhealthDeduction + $pagibigDeduction + $withholdingTax
-                  + $lateDeduction + $absentDeduction + $leaveWithoutPayDeduction;
+              + $lateDeduction + $absentDeduction + $leaveWithoutPayDeduction + $halfDayDeduction;
             $totalDeductions += $earlyOutDeduction;
 
         // Net pay
@@ -243,6 +293,7 @@ class PayrollComputationService
             'dtr_period' => $dtr->period_start->format('M d') . ' - ' . $dtr->period_end->format('M d, Y'),
             'daily_rate' => round($dailyRate, 2),
             'days_worked' => $daysWorked,
+            'half_day_days' => $halfDayCount,
             'days_absent' => $daysAbsent,
             'approved_leaves' => $paidLeaveDays,
             'late_minutes' => $lateMinutes,
@@ -254,6 +305,7 @@ class PayrollComputationService
             'early_out_deduction' => round($earlyOutDeduction, 2),
             'absent_deduction' => round($absentDeduction, 2),
             'leave_without_pay_deduction' => round($leaveWithoutPayDeduction, 2),
+            'half_day_deduction' => round($halfDayDeduction, 2),
             'leave_deduction' => round($leaveDeduction, 2),
             'gross_pay' => round($grossPay, 2),
             'sss_deduction' => round($sssDeduction, 2),
@@ -265,6 +317,7 @@ class PayrollComputationService
             'breakdown' => [
                 'daily_rate' => number_format($dailyRate, 2),
                 'days_present' => $daysWorked,
+                'half_day_days' => $halfDayCount,
                 'days_absent' => $daysAbsent,
                 'paid_leave' => $paidLeaveDays,
                 'leave_without_pay' => $leaveWithoutPayDays,
@@ -274,6 +327,7 @@ class PayrollComputationService
                 'early_out_deduction' => number_format($earlyOutDeduction, 2),
                 'absent_deduction' => number_format($absentDeduction, 2),
                 'leave_without_pay_deduction' => number_format($leaveWithoutPayDeduction, 2),
+                'half_day_deduction' => number_format($halfDayDeduction, 2),
                 'leave_deduction' => number_format($leaveDeduction, 2),
                 'gross_pay' => number_format($grossPay, 2),
                 'sss_deduction' => number_format($sssDeduction, 2),
@@ -317,18 +371,9 @@ class PayrollComputationService
         return $leaveDays;
     }
 
-    /**
-     * Calculate late deduction (per 15 minutes = 1/4 day deduction)
-     */
-    private function calculateLateDeduction($lateMinutes, $dailyRate)
+    private function calculateLateDeduction($lateMinutes)
     {
-        if ($lateMinutes <= 0) {
-            return 0;
-        }
-
-        // For every 15 minutes late = 0.25 day deduction
-        $daysFraction = floor($lateMinutes / 15) * 0.25 / 8;
-        return $dailyRate * $daysFraction;
+        return max(0, (int) $lateMinutes);
     }
 
     /**
@@ -343,13 +388,9 @@ class PayrollComputationService
         return $dailyRate * $daysAbsent;
     }
 
-    private function calculateEarlyOutDeduction($earlyOutMinutes, $dailyRate)
+    private function calculateEarlyOutDeduction($earlyOutMinutes)
     {
-        if ($earlyOutMinutes <= 0 || $dailyRate <= 0) {
-            return 0;
-        }
-
-        return min($dailyRate, $dailyRate * ($earlyOutMinutes / (8 * 60)));
+        return max(0, (int) $earlyOutMinutes);
     }
 
     /**

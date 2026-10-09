@@ -22,7 +22,11 @@
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Period</p>
                     <h6 class="mb-3">{{ $dtr->period_start->format('M d') }} - {{ $dtr->period_end->format('M d, Y') }}</h6>
-                    <span class="badge bg-warning p-2">{{ ucfirst($dtr->status) }}</span>
+                    @if ($dtr->status === 'pending_finance_head')
+                        <span class="badge bg-info text-dark p-2">Approved by HR - Awaiting FH Computation</span>
+                    @else
+                        <span class="badge bg-warning p-2">{{ ucwords(str_replace('_', ' ', $dtr->status)) }}</span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -95,6 +99,38 @@
                 </div>
             </div>
         </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Holidays</p>
+                    <h4 class="mb-0 text-warning">{{ $stats['total_holidays'] ?? 0 }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Suspensions</p>
+                    <h4 class="mb-0 text-danger">{{ $stats['total_suspensions'] ?? 0 }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Halfdays</p>
+                    <h4 class="mb-0 text-warning">{{ $stats['total_half_days'] ?? 0 }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Suspended Hours</p>
+                    <h4 class="mb-0 text-danger">{{ number_format($stats['total_suspended_hours'] ?? 0, 1) }} hrs</h4>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="card mb-4">
@@ -138,6 +174,8 @@
                                     $logsByDate = $attendanceLogs->keyBy(function($log) {
                                         return $log->attendance_date->format('Y-m-d');
                                     });
+                                    $workingDayService = app(\App\Services\WorkingDayService::class);
+                                    $branchId = $dtr->employeeProfile?->branch_id;
                                 @endphp
 
                                 @while ($current <= $endDate)
@@ -152,9 +190,15 @@
                                         $isLWOP = $isApprovedLeave && (bool) $approvedLeave->is_absent;
                                         $isNoRecordYet = false;
                                         $hasAnyAttendanceTime = (bool) ($log && ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out));
-                                        $isPending = !$isWeekend && !$isApprovedLeave && (!$log || !$hasAnyAttendanceTime) && !$current->isPast();
+                                        $isSuspension = false;
+                                        $isHoliday = false;
+                                        if (!$isWeekend && !$isApprovedLeave && !$hasAnyAttendanceTime) {
+                                            $isSuspension = $workingDayService->isSuspension($current, $branchId);
+                                            $isHoliday = !$isSuspension && $workingDayService->isHoliday($current, $branchId);
+                                        }
+                                        $isPending = !$isWeekend && !$isApprovedLeave && !$isSuspension && !$isHoliday && (!$log || !$hasAnyAttendanceTime) && !$current->isPast();
                                         $isUpcoming = false;
-                                        $isAbsent = !$isWeekend && !$isApprovedLeave && $current->isPast() && (!$log || !$hasAnyAttendanceTime || in_array(strtolower((string) $log->status), ['absent', 'a'], true));
+                                        $isAbsent = !$isWeekend && !$isApprovedLeave && !$isSuspension && !$isHoliday && $current->isPast() && (!$log || !$hasAnyAttendanceTime || in_array(strtolower((string) $log->status), ['absent', 'a'], true));
                                         $attendanceStatus = $hasAnyAttendanceTime ? $log->getDtrStatus() : null;
                                         $isLateTimeIn = $attendanceStatus && str_contains($attendanceStatus, 'Late');
                                         $isEarlyOut = $attendanceStatus && str_contains($attendanceStatus, 'Early Out');
@@ -165,17 +209,25 @@
                                         $statusLetter = $isWeekend ? 'WKD' : (
                                             $isLWOP ? 'LWOP' : (
                                                 $isApprovedLeave ? 'L' : (
-                                                    $isAbsent ? 'A' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : (
-                                                        $isNoRecordYet ? '' : ($isPending ? 'Pending' : ($attendanceStatus ?: 'P'))
-                                                    )))
+                                                    $isSuspension ? 'S' : (
+                                                        $isHoliday ? 'H' : (
+                                                            $isAbsent ? 'A' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : (
+                                                                $isNoRecordYet ? '' : ($isPending ? 'Pending' : ($attendanceStatus ?: 'P'))
+                                                            )))
+                                                        )
+                                                    )
                                                 )
                                             )
                                         );
                                         $statusClass = $isWeekend ? 'bg-secondary' : (
                                             $isLWOP ? 'bg-danger' : (
                                                 $isApprovedLeave ? 'bg-info' : (
-                                                    $isAbsent ? 'bg-danger' : (
-                                                        $isPending ? 'bg-secondary' : ($isNoRecordYet ? 'bg-transparent text-transparent border-0' : ($attendanceStatus === 'Half Day' ? 'bg-warning text-dark' : ($isLateTimeIn || $isEarlyOut ? 'bg-danger' : 'bg-success')))
+                                                    $isSuspension ? 'bg-danger' : (
+                                                        $isHoliday ? 'bg-warning text-dark' : (
+                                                            $isAbsent ? 'bg-danger' : (
+                                                                $isPending ? 'bg-secondary' : ($isNoRecordYet ? 'bg-transparent text-transparent border-0' : ($attendanceStatus === 'Half Day' ? 'bg-warning text-dark' : ($isLateTimeIn || $isEarlyOut ? 'bg-danger' : 'bg-success')))
+                                                            )
+                                                        )
                                                     )
                                                 )
                                             )

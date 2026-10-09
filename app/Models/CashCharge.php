@@ -12,6 +12,7 @@ class CashCharge extends Model
         'amount',
         'installment_per_cutoff',
         'reason',
+        'evidence_path',
         'requested_by',
         'approved_by',
         'status',

@@ -434,10 +434,10 @@ class BiometricController extends Controller
         // Same logic as employee
         if (!$attendance->am_in && $currentHour >= 6 && $currentHour < 12) {
             $attendance->am_in = $now;
-            $standardIn = $this->scheduledTime($employeeProfile, 'start_time', 7);
-            if ($now >= $standardIn) {
-                $lateMinutes = $standardIn->diffInMinutes($now);
-                $attendance->late_minutes = $lateMinutes;
+            $standardIn = $this->scheduledTime($employeeProfile, 'start_time', 8);
+            $lateMinutes = \App\Services\AttendanceTimeRules::lateMinutes($now, $standardIn);
+            $attendance->late_minutes = $lateMinutes;
+            if ($lateMinutes > 0) {
                 $attendance->status = 'late';
                 $message = "AM In recorded (LATE by {$lateMinutes} minutes)";
             } else {
@@ -575,6 +575,17 @@ class BiometricController extends Controller
             }
         }
 
+        if (app(\App\Services\WorkingDayService::class)->isSuspension($now, $employeeProfile->branch_id)) {
+            $message = 'Attendance is not allowed because work is suspended today.';
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'error' => $message,
+                'attendance_blocked' => true,
+                'date' => $now->toDateString(),
+            ], 403);
+        }
+
         $attendance = AttendanceLog::firstOrNew([
             'employee_profile_id' => $employeeProfile->id,
             'attendance_date' => $now->toDateString(),
@@ -590,10 +601,10 @@ class BiometricController extends Controller
         
         if (!$attendance->am_in && $currentHour >= 6 && $currentHour < 12) {
             $attendance->am_in = $now;
-            $standardIn = $this->scheduledTime($employeeProfile, 'start_time', 7);
-            if ($now >= $standardIn) {
-                $lateMinutes = $standardIn->diffInMinutes($now);
-                $attendance->late_minutes = $lateMinutes;
+            $standardIn = $this->scheduledTime($employeeProfile, 'start_time', 8);
+            $lateMinutes = \App\Services\AttendanceTimeRules::lateMinutes($now, $standardIn);
+            $attendance->late_minutes = $lateMinutes;
+            if ($lateMinutes > 0) {
                 $attendance->status = 'late';
                 $message = "AM In recorded (LATE by {$lateMinutes} minutes)";
             } else {
@@ -889,7 +900,7 @@ class BiometricController extends Controller
         return null;
     }
 
-    private function attendanceBlockedReason($employee, $date): ?string
+    private function attendanceBlockedReason($employee, $date, bool $allowSuspensionTimeOut = false): ?string
     {
         $day = $date instanceof \Carbon\Carbon
             ? $date->copy()
@@ -900,6 +911,10 @@ class BiometricController extends Controller
         }
 
         $workingDayService = app(\App\Services\WorkingDayService::class);
+        if ($workingDayService->isSuspension($day, $employee->branch_id) && !$allowSuspensionTimeOut) {
+            return 'Attendance is not allowed because work is suspended today.';
+        }
+
         if ($workingDayService->isHoliday($day, $employee->branch_id)) {
             return 'Attendance is not allowed because today is a holiday.';
         }
@@ -982,6 +997,17 @@ class BiometricController extends Controller
             }
         }
 
+        if (app(\App\Services\WorkingDayService::class)->isSuspension($now, $employee->branch_id)) {
+            $message = 'Attendance is not allowed because work is suspended today.';
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'error' => $message,
+                'attendance_blocked' => true,
+                'date' => $now->toDateString(),
+            ], 403);
+        }
+
         $attendance = AttendanceLog::firstOrNew([
             'employee_profile_id' => $employee->id,
             'attendance_date' => $now->toDateString(),
@@ -1003,10 +1029,10 @@ class BiometricController extends Controller
             }
 
             $attendance->am_in = $now;
-            $standardIn = $this->scheduledTime($employee, 'start_time', 7);
-            if ($now >= $standardIn) {
-                $lateMinutes = $standardIn->diffInMinutes($now);
-                $attendance->late_minutes = $lateMinutes;
+            $standardIn = $this->scheduledTime($employee, 'start_time', 8);
+            $lateMinutes = \App\Services\AttendanceTimeRules::lateMinutes($now, $standardIn);
+            $attendance->late_minutes = $lateMinutes;
+            if ($lateMinutes > 0) {
                 $attendance->status = 'late';
                 $message = "AM In recorded (LATE by {$lateMinutes} minutes)";
             } else {
@@ -1127,7 +1153,11 @@ class BiometricController extends Controller
             }
         }
         
-        $query = EmployeeProfile::query();
+        $query = EmployeeProfile::query()
+            ->whereNotIn('id', FinanceProfile::query()->select('employee_profile_id')->whereNotNull('employee_profile_id'))
+            ->whereDoesntHave('user', function ($userQuery) {
+                $userQuery->whereIn('role', ['finance_officer', 'finance_head']);
+            });
 
         if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $query->where('branch_id', $branchId);
@@ -1162,12 +1192,22 @@ class BiometricController extends Controller
     public function getUnregisteredFinanceOfficers(Request $request)
     {
         $user = auth()->user();
-        
-        if (!$user->isSuperAdmin()) {
-            return response()->json(['error' => 'Only Super Admin can access this'], 403);
+
+        $isBranchAdmin = $user->role === 'admin' && $user->admin_type === 'branch_admin';
+        if (!$user->isSuperAdmin() && !$isBranchAdmin) {
+            return response()->json(['error' => 'Only Super Admin or Branch Admin can access this'], 403);
         }
-        
-        $financeOfficers = FinanceProfile::with(['user', 'branch'])->get()->map(function($finance) {
+
+        $branchId = $isBranchAdmin ? $user->getEffectiveBranchId() : null;
+        if ($isBranchAdmin && !$branchId) {
+            return response()->json(['error' => 'Branch admin has no assigned branch.'], 403);
+        }
+
+        $financeOfficers = FinanceProfile::with(['user', 'branch'])
+            ->whereHas('user', fn ($query) => $query->where('role', 'finance_officer'))
+            ->when($isBranchAdmin, fn ($query) => $query->where('branch_id', $branchId))
+            ->get()
+            ->map(function($finance) {
             return [
                 'id' => $finance->id,
                 'profile_type' => 'financeprofile',
@@ -1200,7 +1240,13 @@ class BiometricController extends Controller
             return response()->json(['error' => 'Only Super Admin can access this'], 403);
         }
         
-        $admins = AdminProfile::with(['user', 'branch'])->get()->map(function($admin) {
+        $admins = AdminProfile::with(['user', 'branch'])
+            ->where(function ($query) {
+                $query->whereHas('user', fn ($userQuery) => $userQuery->where('admin_type', 'branch_admin'))
+                    ->orWhere('admin_level', 'branch_admin');
+            })
+            ->get()
+            ->map(function($admin) {
             $userAdminType = $admin->user?->admin_type ?? $admin->admin_level ?? 'admin';
             $adminLevel = $admin->admin_level ?? $userAdminType;
             $isBranchAdmin = strtolower((string) ($userAdminType ?: $adminLevel)) === 'branch_admin'
@@ -1247,6 +1293,10 @@ class BiometricController extends Controller
         }
 
         $finance = FinanceProfile::findOrFail($request->finance_id);
+        if ($finance->user?->role === 'finance_head') {
+            return response()->json(['error' => 'Finance Head fingerprint registration is not allowed'], 422);
+        }
+
         $finance->fingerprint_template = $this->appendFingerprintTemplate(
             $finance->fingerprint_template,
             $request->fingerprint_data
@@ -1276,6 +1326,12 @@ class BiometricController extends Controller
         }
 
         $admin = AdminProfile::findOrFail($request->admin_id);
+        $userAdminType = strtolower((string) ($admin->user?->admin_type ?? ''));
+        $profileAdminLevel = strtolower((string) ($admin->admin_level ?? ''));
+        if ($userAdminType !== 'branch_admin' && $profileAdminLevel !== 'branch_admin') {
+            return response()->json(['error' => 'HR and Super Admin fingerprint registration is not allowed'], 422);
+        }
+
         $admin->fingerprint_template = $this->appendFingerprintTemplate(
             $admin->fingerprint_template,
             $request->fingerprint_data
@@ -1343,7 +1399,24 @@ class BiometricController extends Controller
     // Simplified time clock for fingerprint scanner (TIME-IN / TIME-OUT)
     public function getFingerprintTemplates(Request $request)
     {
-        $templates = EmployeeProfile::where('is_fingerprint_registered', true)
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json([
+                'success' => false,
+                'error' => $deviceValidation['error'],
+            ], $deviceValidation['code']);
+        }
+
+        $device = $deviceValidation['device'];
+        if ($device->branch_id === null) {
+            return response()->json([
+                'success' => false,
+                'error' => 'This device is not assigned to a branch and cannot retrieve fingerprint templates.',
+            ], 403);
+        }
+
+        $templates = EmployeeProfile::where('branch_id', $device->branch_id)
+            ->where('is_fingerprint_registered', true)
             ->whereNotNull('fingerprint_template')
             ->with('branch:id,branch_name')
             ->when($request->filled('employee_number'), function ($query) use ($request) {
@@ -1368,6 +1441,47 @@ class BiometricController extends Controller
         return response()->json([
             'success' => true,
             'templates' => $templates,
+        ]);
+    }
+
+    public function getAttendanceSuspensions(Request $request)
+    {
+        $validated = $request->validate([
+            'device_serial' => 'required|string',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $device = Device::getBySerialNumber($validated['device_serial']);
+        if (!$device) {
+            return response()->json(['success' => false, 'message' => 'Device serial not registered or inactive.'], 401);
+        }
+
+        $startDate = \Carbon\Carbon::parse($validated['start_date'])->startOfDay();
+        $endDate = \Carbon\Carbon::parse($validated['end_date'])->startOfDay();
+        if ($startDate->diffInDays($endDate) > 366) {
+            return response()->json(['success' => false, 'message' => 'The requested date range cannot exceed one year.'], 422);
+        }
+
+        $dates = \App\Models\CalendarEvent::suspensions()
+            ->approved()
+            ->whereDate('event_date', '>=', $startDate->toDateString())
+            ->whereDate('event_date', '<=', $endDate->toDateString())
+            ->where(function ($query) use ($device) {
+                $query->whereNull('branch_id');
+                if ($device->branch_id !== null) {
+                    $query->orWhere('branch_id', $device->branch_id);
+                }
+            })
+            ->orderBy('event_date')
+            ->pluck('event_date')
+            ->map(fn ($date) => \Carbon\Carbon::parse($date)->toDateString())
+            ->unique()
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'dates' => $dates,
         ]);
     }
 
@@ -1429,7 +1543,28 @@ class BiometricController extends Controller
     $rawTimestamp = $request->input('attendance_timestamp') ?: $request->input('timestamp');
         $now = $rawTimestamp ? \Carbon\Carbon::parse($rawTimestamp)->setTimezone(config('app.timezone')) : now();
         $attendanceDate = $now->copy()->toDateString();
-        $nonWorkingDayResponse = $this->attendanceBlockedReason($employee, $now->copy()->toDateString());
+        $requestedAction = strtoupper(trim($request->input('action')));
+        $attendance = AttendanceLog::where('employee_profile_id', $employee->id)
+            ->whereDate('attendance_date', $attendanceDate)
+            ->first();
+        if (!$attendance) {
+            $attendance = new AttendanceLog([
+                'employee_profile_id' => $employee->id,
+                'attendance_date' => $attendanceDate,
+            ]);
+        }
+        $hasOpenAttendance = AttendanceLog::where('employee_profile_id', $employee->id)
+            ->whereDate('attendance_date', $attendanceDate)
+            ->whereNotNull('am_in')
+            ->whereNull('pm_out')
+            ->exists();
+        $allowSuspensionTimeOut = $requestedAction === 'TIME-OUT'
+            && $hasOpenAttendance;
+        $nonWorkingDayResponse = $this->attendanceBlockedReason(
+            $employee,
+            $attendanceDate,
+            (bool) $allowSuspensionTimeOut
+        );
         if ($nonWorkingDayResponse) {
             return response()->json([
                 'success' => false,
@@ -1440,24 +1575,17 @@ class BiometricController extends Controller
             ], 403);
         }
 
-        $attendance = AttendanceLog::firstOrNew([
-            'employee_profile_id' => $employee->id,
-            'attendance_date' => $attendanceDate,
-        ]);
-
         $attendance->employee_profile_id = $employee->id;
         $attendance->employee_id = $employee->id;
         $attendance->branch_id = $employee->branch_id;
         $attendance->attendance_date = $attendanceDate;
         
-        $requestedAction = strtoupper(trim($request->input('action')));
-
         if ($requestedAction === 'TIME-IN') {
             $attendance->am_in = $now;
-            $standardIn = $this->scheduledTime($employee, 'start_time', 7, $now);
-            if ($now >= $standardIn) {
-                $lateMinutes = $standardIn->diffInMinutes($now);
-                $attendance->late_minutes = $lateMinutes;
+            $standardIn = $this->scheduledTime($employee, 'start_time', 8, $now);
+            $lateMinutes = \App\Services\AttendanceTimeRules::lateMinutes($now, $standardIn);
+            $attendance->late_minutes = $lateMinutes;
+            if ($lateMinutes > 0) {
                 $attendance->status = 'late';
                 $message = "TIME-IN updated (LATE by {$lateMinutes} minutes)";
             } else {

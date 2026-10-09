@@ -3,7 +3,63 @@
 @section('title', 'Cash Charges Management')
 
 @section('content')
-    <div class="container-fluid py-4">
+    <style>
+        .cash-charges-page .evidence-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.65rem;
+            border: 1px solid rgba(128, 0, 128, 0.35);
+            border-radius: 0.5rem;
+            background: rgba(128, 0, 128, 0.08);
+            color: #800080;
+            font-size: 0.85rem;
+            font-weight: 600;
+            line-height: 1.25;
+            text-decoration: none;
+            white-space: nowrap;
+            transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+        }
+
+        .cash-charges-page .evidence-link:hover {
+            transform: translateY(-1px);
+            border-color: #800080;
+            background: #800080;
+            color: #fff;
+        }
+
+        .cash-charges-page .evidence-link:focus-visible {
+            outline: 3px solid rgba(128, 0, 128, 0.3);
+            outline-offset: 2px;
+        }
+
+        body.dark-mode .cash-charges-page .evidence-link {
+            border-color: rgba(192, 132, 252, 0.45);
+            background: rgba(126, 34, 206, 0.18);
+            color: #e9d5ff;
+        }
+
+        body.dark-mode .cash-charges-page .evidence-link:hover {
+            border-color: #c084fc;
+            background: #7e22ce;
+            color: #fff;
+        }
+
+        body.dark-mode .cash-charges-page .table tbody tr,
+        body.dark-mode .cash-charges-page .table tbody td {
+            background-color: #1e293b !important;
+            border-color: #334155 !important;
+            color: #f8fafc !important;
+        }
+
+        body.dark-mode .cash-charges-page .table.table-hover tbody tr:hover,
+        body.dark-mode .cash-charges-page .table.table-hover tbody tr:hover td {
+            background-color: #273449 !important;
+        }
+    </style>
+
+    <div class="container-fluid py-4 cash-charges-page">
         <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
             <div>
                 <h2 class="mb-1">Cash Charges Management</h2>
@@ -85,7 +141,7 @@
                     })
                     ->values();
                 $totalChargeBalance = $latestApprovedCharge
-                    ? (float) $latestApprovedCharge->amount
+                    ? (float) ($latestApprovedCharge->remaining_balance ?? $latestApprovedCharge->amount)
                     : ($baseChargeBalance > 0 ? $baseChargeBalance : ($pendingChargeRequest ? (float) $pendingChargeRequest->amount : 0));
                 $installmentPerCutoff = $latestApprovedCharge && $latestApprovedCharge->installment_per_cutoff !== null
                     ? (float) $latestApprovedCharge->installment_per_cutoff
@@ -175,6 +231,7 @@
                                         <th>Branch</th>
                                         <th>Installment Amount</th>
                                         <th>Reason</th>
+                                        <th>Evidence</th>
                                         <th>Status</th>
                                     </tr>
                                 </thead>
@@ -188,6 +245,15 @@
                                             <td>{{ $charge->employeeProfile?->branch?->branch_name ?? 'N/A' }}</td>
                                             <td>₱{{ number_format((float) ($charge->installment_per_cutoff ?? ((float) $charge->amount / 2)), 2) }}</td>
                                             <td>{{ $charge->reason }}</td>
+                                            <td>
+                                                @if($charge->evidence_path)
+                                                    <a class="evidence-link" href="{{ route('admin.cash-charges.evidence', $charge) }}" target="_blank" rel="noopener" title="View evidence image" aria-label="View evidence image">
+                                                        <i class="fas fa-eye" aria-hidden="true"></i><span>View</span>
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">--</span>
+                                                @endif
+                                            </td>
                                             <td>
                                                 <span class="badge bg-success">Approved</span>
                                             </td>
@@ -205,6 +271,7 @@
                                         <th>Branch</th>
                                         <th>Amount</th>
                                         <th>Reason</th>
+                                        <th>Evidence</th>
                                         <th>Status</th>
                                     </tr>
                                 </thead>
@@ -218,6 +285,15 @@
                                             <td>{{ $charge->employeeProfile?->branch?->branch_name ?? 'N/A' }}</td>
                                             <td>₱{{ number_format((float) $charge->amount, 2) }}</td>
                                             <td>{{ $charge->reason }}</td>
+                                            <td>
+                                                @if($charge->evidence_path)
+                                                    <a class="evidence-link" href="{{ route('admin.cash-charges.evidence', $charge) }}" target="_blank" rel="noopener" title="View evidence image" aria-label="View evidence image">
+                                                        <i class="fas fa-eye" aria-hidden="true"></i><span>View</span>
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">--</span>
+                                                @endif
+                                            </td>
                                             <td><span class="badge bg-success">Approved</span></td>
                                         </tr>
                                     @endforeach
@@ -296,7 +372,7 @@
                 </div>
                 <div class="collapse" id="cash-charge-form-wrapper">
                     <div class="card-body">
-                        <form method="POST" action="{{ route('admin.cash-charges.store') }}" class="row g-3 align-items-end">
+                        <form method="POST" action="{{ route('admin.cash-charges.store') }}" class="row g-3 align-items-end" enctype="multipart/form-data">
                             @csrf
                             <div class="col-md-4">
                                 <label class="form-label">Employee</label>
@@ -314,6 +390,11 @@
                             <div class="col-md-5">
                                 <label class="form-label">Reason</label>
                                 <input type="text" name="reason" class="form-control" maxlength="1000" placeholder="Enter reason" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="cash-charge-evidence" class="form-label">Upload Evidence</label>
+                                <input id="cash-charge-evidence" type="file" name="evidence" class="form-control" accept="image/jpeg,image/png,image/webp">
+                                <small class="form-text text-muted">Image only, up to 5 MB.</small>
                             </div>
                             <div class="col-12">
                                 <button type="submit" class="btn btn-primary">Submit Charge Request</button>
@@ -339,6 +420,7 @@
                                 <th>Amount</th>
                                 <th>Installment Amount</th>
                                 <th>Reason</th>
+                                <th>Evidence</th>
                                 <th>Status</th>
                                 @if(Auth::user()->role === 'admin' && in_array(Auth::user()->admin_type ?? '', ['branch_admin', 'super_admin'], true))
                                     <th>Action</th>
@@ -366,6 +448,15 @@
                                     <td>₱{{ number_format((float) $charge->amount, 2) }}</td>
                                     <td>₱{{ number_format((float) ($charge->installment_per_cutoff ?? ((float) $charge->amount / 2)), 2) }}</td>
                                     <td>{{ $charge->reason }}</td>
+                                    <td>
+                                        @if($charge->evidence_path)
+                                            <a class="evidence-link" href="{{ route('admin.cash-charges.evidence', $charge) }}" target="_blank" rel="noopener" title="View evidence image" aria-label="View evidence image">
+                                                <i class="fas fa-eye" aria-hidden="true"></i><span>View</span>
+                                            </a>
+                                        @else
+                                            <span class="text-muted">--</span>
+                                        @endif
+                                    </td>
                                     <td>
                                         <span class="badge bg-{{ $charge->status === 'approved' ? 'success' : ($charge->status === 'rejected' ? 'danger' : 'warning text-dark') }}">
                                             {{ $displayStatus }}
@@ -407,7 +498,7 @@
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="{{ (Auth::user()->role === 'admin' && in_array(Auth::user()->admin_type ?? '', ['branch_admin', 'super_admin'], true)) ? 7 : 6 }}" class="text-center text-muted py-4">No cash charge requests found.</td>
+                                    <td colspan="{{ (Auth::user()->role === 'admin' && in_array(Auth::user()->admin_type ?? '', ['branch_admin', 'super_admin'], true)) ? 8 : 7 }}" class="text-center text-muted py-4">No cash charge requests found.</td>
                                 </tr>
                             @endforelse
                         </tbody>
@@ -433,6 +524,7 @@
                                         <th>Amount</th>
                                         <th>Installment Amount</th>
                                         <th>Reason</th>
+                                        <th>Evidence</th>
                                         <th>Status</th>
                                         <th>Action</th>
                                     </tr>
@@ -449,6 +541,15 @@
                                             <td>₱{{ number_format((float) ($charge->installment_per_cutoff ?? ((float) $charge->amount / 2)), 2) }}</td>
                                             <td>{{ $charge->reason }}</td>
                                             <td>
+                                                @if($charge->evidence_path)
+                                                    <a class="evidence-link" href="{{ route('admin.cash-charges.evidence', $charge) }}" target="_blank" rel="noopener" title="View evidence image" aria-label="View evidence image">
+                                                        <i class="fas fa-eye" aria-hidden="true"></i><span>View</span>
+                                                    </a>
+                                                @else
+                                                    <span class="text-muted">--</span>
+                                                @endif
+                                            </td>
+                                            <td>
                                                 <span class="badge bg-{{ $charge->status === 'approved' ? 'success' : 'danger' }}">
                                                     {{ $charge->status === 'approved' ? 'Approved' : 'Rejected' }}
                                                 </span>
@@ -462,7 +563,7 @@
                                         </tr>
                                     @empty
                                         <tr>
-                                            <td colspan="7" class="text-center text-muted py-4">No archived cash charge requests found.</td>
+                                            <td colspan="8" class="text-center text-muted py-4">No archived cash charge requests found.</td>
                                         </tr>
                                     @endforelse
                                 </tbody>

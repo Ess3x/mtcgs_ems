@@ -25,7 +25,7 @@ class PayrollService
             ->get();
         
         $daysPresent = $attendanceLogs->whereNotNull('time_in')->count();
-        $daysLate = $attendanceLogs->where('late_minutes', '>', 0)->count();
+        $lateMinutes = (int) $attendanceLogs->sum('late_minutes');
         $workingDays = app(\App\Services\WorkingDayService::class)->countWorkingDays(
             $period->start_date,
             $period->end_date,
@@ -33,13 +33,14 @@ class PayrollService
         );
         
         $basicPay = $dailyRate * $daysPresent;
-        $lateDeduction = ($daysLate * $dailyRate * 0.25); // 15 minutes late deduction
+        $lateDeduction = $lateMinutes;
         
         return [
             'basic_pay' => round($basicPay, 2),
             'daily_rate' => round($dailyRate, 2),
             'days_present' => $daysPresent,
             'days_absent' => max(0, $workingDays - $daysPresent),
+            'late_minutes' => $lateMinutes,
             'late_deduction' => round($lateDeduction, 2),
         ];
     }

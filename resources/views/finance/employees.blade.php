@@ -4,6 +4,11 @@
 
 @section('content')
 <style>
+    body.dark-mode .finance-employees-page .card.bg-info {
+        background-color: #9132a8 !important;
+        color: #fff !important;
+    }
+
     body.dark-mode .finance-employees-page .card-header.bg-white,
     body.dark-mode .finance-employees-page .table thead.table-light th,
     body.dark-mode .finance-employees-page .table tbody tr.table-light > th {
@@ -16,6 +21,18 @@
         background-color: #334155 !important;
         color: #e2e8f0 !important;
         border-color: #475569 !important;
+    }
+
+    body.dark-mode .finance-employees-page .table tbody tr:not(.table-light):not(.table-secondary),
+    body.dark-mode .finance-employees-page .table tbody tr:not(.table-light):not(.table-secondary) td {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border-color: #334155 !important;
+    }
+
+    body.dark-mode .finance-employees-page .table.table-hover tbody tr:not(.table-light):not(.table-secondary):hover,
+    body.dark-mode .finance-employees-page .table.table-hover tbody tr:not(.table-light):not(.table-secondary):hover td {
+        background-color: #273449 !important;
     }
 
     body.dark-mode .finance-employees-page a,

@@ -123,7 +123,7 @@ document.querySelector('[data-device-form]')?.addEventListener('submit', async (
     const submitButton = form.querySelector('button[type="submit"]');
     submitButton.disabled = true;
     try {
-        const response = await fetch(form.action, { method: 'PUT', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: new FormData(form) });
+        const response = await fetch(form.action, { method: 'POST', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: new FormData(form) });
         const payload = await response.json();
         if (!response.ok) throw new Error(Object.values(payload.errors || {}).flat()[0] || payload.message || 'Unable to update device.');
         alert(payload.message);

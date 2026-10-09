@@ -200,14 +200,9 @@
                 </div>
             </div>
 
-    @if(Auth::user()->isSuperAdmin())
+    @if(Auth::user()->isSuperAdmin() || (Auth::user()->role === 'admin' && Auth::user()->admin_type === 'branch_admin'))
         <div class="mt-4 pt-3 border-top">
             <h6 class="text-primary mb-2"><i class="fas fa-chart-line me-2"></i>Finance Officers</h6>
-                <div id="unregisteredFinanceHeadList">
-                    <div class="text-center">
-                        <div class="spinner-border spinner-border-sm"></div> Loading finance head...
-                    </div>
-                </div>
                 <div id="unregisteredFinanceOfficerList">
                     <div class="text-center">
                         <div class="spinner-border spinner-border-sm"></div> Loading finance officers...
@@ -215,15 +210,7 @@
                 </div>
         </div>
 
-        <div class="mt-4 pt-3 border-top">
-            <h6 class="text-primary mb-2"><i class="fas fa-user-shield me-2"></i>Super Admin / HR</h6>
-                <div id="unregisteredHrList">
-                    <div class="text-center">
-                        <div class="spinner-border spinner-border-sm"></div> Loading HR users...
-                    </div>
-                </div>
-        </div>
-
+    @if(Auth::user()->isSuperAdmin())
         <div class="mt-4 pt-3 border-top">
             <h6 class="text-primary mb-2"><i class="fas fa-user-shield me-2"></i>Branch Admins</h6>
                 <div id="unregisteredBranchAdminList">
@@ -232,6 +219,7 @@
                     </div>
                 </div>
         </div>
+    @endif
         </div>
         </div>
     @endif
@@ -417,7 +405,9 @@ function profileLink(item) {
         return `<strong>${name}</strong>`;
     }
 
-    return `<a class="biometric-profile-link fw-bold" href="${appBaseUrl}/finance/employee/${item.profile_type}/${item.id}/profile">${name}</a>`;
+    const profileType = encodeURIComponent(item.profile_type);
+    const profileId = encodeURIComponent(item.id);
+    return `<a class="biometric-profile-link fw-bold" href="${appBaseUrl}/admin/employee/${profileType}/${profileId}/profile">${name}</a>`;
 }
 
 // Render list of status items for a target container
@@ -484,9 +474,8 @@ function renderStatusList(container, items, emptyMessage, accentClass, labelPref
 
 // Load unregistered finance officers
 async function loadUnregisteredFinanceOfficers() {
-    const financeHeadList = document.getElementById('unregisteredFinanceHeadList');
     const financeOfficerList = document.getElementById('unregisteredFinanceOfficerList');
-    if (!financeHeadList && !financeOfficerList) {
+    if (!financeOfficerList) {
         return;
     }
 
@@ -497,22 +486,17 @@ async function loadUnregisteredFinanceOfficers() {
     const result = await response.json();
     
     if (result.success && result.data.length > 0) {
-        const financeHead = [];
-        const financeOfficers = result.data.filter(item => String(item.role || 'finance_officer') !== 'finance_head');
-
-        renderStatusList(financeHeadList, financeHead, 'Finance Head fingerprint registration is not required.', 'bg-secondary', 'Finance Head');
+        const financeOfficers = result.data;
         renderStatusList(financeOfficerList, financeOfficers, 'All finance officers have registered fingerprints!', 'bg-primary', 'Finance Officer', true);
     } else {
-        renderStatusList(financeHeadList, [], 'Finance Head fingerprint registration is not required.', 'bg-secondary', 'Finance Head');
         renderStatusList(financeOfficerList, [], 'All finance officers have registered fingerprints!', 'bg-primary', 'Finance Officer');
     }
 }
 
 // Load unregistered admins
 async function loadUnregisteredAdmins() {
-    const hrList = document.getElementById('unregisteredHrList');
     const branchAdminList = document.getElementById('unregisteredBranchAdminList');
-    if (!hrList && !branchAdminList) {
+    if (!branchAdminList) {
         return;
     }
 
@@ -523,22 +507,9 @@ async function loadUnregisteredAdmins() {
     const result = await response.json();
     
     if (result.success && result.data.length > 0) {
-        const isBranchAdmin = item => {
-            const adminType = String(item.admin_type || item.admin_level || item.role || '').toLowerCase();
-            return adminType === 'branch_admin';
-        };
-        const isHrUser = item => {
-            const adminType = String(item.admin_type || item.admin_level || item.role || '').toLowerCase();
-            return ['hr', 'super_admin', ''].includes(adminType);
-        };
-
-        const hrAdmins = result.data.filter(isHrUser);
-        const branchAdmins = result.data.filter(item => isBranchAdmin(item) && !isHrUser(item));
-
-        renderStatusList(hrList, hrAdmins, 'All Super Admin / HR users have registered fingerprints!', 'bg-secondary', 'Super Admin / HR');
+        const branchAdmins = result.data;
         renderStatusList(branchAdminList, branchAdmins, 'All branch admins have registered fingerprints!', 'bg-warning', 'Branch Admin', true);
     } else {
-        renderStatusList(hrList, [], 'HR fingerprint registration is not required.', 'bg-secondary', 'HR');
         renderStatusList(branchAdminList, [], 'All branch admins have registered fingerprints!', 'bg-warning', 'Branch Admin');
     }
 }

@@ -13,11 +13,15 @@ class CalendarEvent extends Model
         'event_date',
         'event_type',
         'created_by',
-        'branch_id'
+        'branch_id',
+        'approval_status',
+        'approved_by',
+        'approved_at'
     ];
 
     protected $casts = [
         'event_date' => 'date',
+        'approved_at' => 'datetime',
     ];
 
     public function creator(): BelongsTo
@@ -30,6 +34,11 @@ class CalendarEvent extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
     public function scopeActivities($query)
     {
         return $query->where('event_type', 'activity');
@@ -38,6 +47,16 @@ class CalendarEvent extends Model
     public function scopeHolidays($query)
     {
         return $query->where('event_type', 'holiday');
+    }
+
+    public function scopeSuspensions($query)
+    {
+        return $query->where('event_type', 'suspension');
+    }
+
+    public function scopeApproved($query)
+    {
+        return $query->where('approval_status', 'approved');
     }
 
     public function scopeForBranch($query, $branchId)

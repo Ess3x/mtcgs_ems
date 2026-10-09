@@ -187,10 +187,8 @@
                     <tr>
                         <th>Date</th>
                         <th>Employee</th>
-                        <th class="text-center table-hide-mobile">AM In</th>
-                        <th class="text-center table-hide-mobile">AM Out</th>
-                        <th class="text-center table-hide-mobile">PM In</th>
-                        <th class="text-center table-hide-mobile">PM Out</th>
+                        <th class="text-center table-hide-mobile">Time-In</th>
+                        <th class="text-center table-hide-mobile">Time-Out</th>
                         <th class="text-center">Status</th>
                         <th class="text-center table-hide-mobile">Source</th>
                         <th class="text-center">Late/OT</th>
@@ -212,19 +210,11 @@
                             </div>
                         </td>
                         <td class="text-center table-hide-mobile">
-                            @if($att['am_in'] != '--') <span class="badge bg-success">{{ $att['am_in'] }}</span>
+                            @if($att['time_in'] != '--') <span class="badge bg-success">{{ $att['time_in'] }}</span>
                             @else <span class="text-muted">--</span> @endif
                         </td>
                         <td class="text-center table-hide-mobile">
-                            @if($att['am_out'] != '--') <span class="badge bg-info">{{ $att['am_out'] }}</span>
-                            @else <span class="text-muted">--</span> @endif
-                        </td>
-                        <td class="text-center table-hide-mobile">
-                            @if($att['pm_in'] != '--') <span class="badge bg-info">{{ $att['pm_in'] }}</span>
-                            @else <span class="text-muted">--</span> @endif
-                        </td>
-                        <td class="text-center table-hide-mobile">
-                            @if($att['pm_out'] != '--') <span class="badge bg-primary">{{ $att['pm_out'] }}</span>
+                            @if($att['time_out'] != '--') <span class="badge bg-primary">{{ $att['time_out'] }}</span>
                             @else <span class="text-muted">--</span> @endif
                         </td>
                         <td class="text-center">
@@ -251,7 +241,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr><td colspan="9" class="text-center py-5">
+                    <tr><td colspan="7" class="text-center py-5">
                         <i class="fas fa-calendar-alt fa-3x text-muted mb-3 d-block"></i>
                         <p class="text-muted mb-0">No attendance records found</p>
                     </td></tr>

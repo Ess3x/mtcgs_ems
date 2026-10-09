@@ -60,18 +60,31 @@ class AttendanceLog extends Model
             return 'Present';
         }
 
-        $hasMorning = (bool) $this->am_in;
-        $hasAfternoon = (bool) $this->pm_in || (bool) $this->pm_out;
-        if (!$hasMorning || !$hasAfternoon) {
+        $hasFullAttendance = $this->am_in && $this->pm_in && $this->pm_out;
+        $workedMinutes = 0;
+        if ($this->am_in && $this->am_out) {
+            $workedMinutes += $this->am_in->diffInMinutes($this->am_out);
+        }
+        if ($this->pm_in && $this->pm_out) {
+            $workedMinutes += $this->pm_in->diffInMinutes($this->pm_out);
+        }
+        if (!$this->am_out && !$this->pm_in && $this->am_in && $this->pm_out) {
+            $workedMinutes = $this->am_in->diffInMinutes($this->pm_out);
+            if ($this->am_in->format('H:i:s') < '13:00:00' && $this->pm_out->format('H:i:s') > '12:00:00') {
+                $workedMinutes = max(0, $workedMinutes - 60);
+            }
+        }
+
+        $isSingleClockRange = !$this->am_out && !$this->pm_in && $this->am_in && $this->pm_out;
+        if (!$hasFullAttendance && (!$isSingleClockRange || $workedMinutes <= 240)) {
             return 'Half Day';
         }
 
         $shift = $this->employeeProfile?->shift;
-        $start = $shift?->start_time ?: '07:00:00';
-        $end = $shift?->end_time ?: '17:00:00';
+        $start = $shift?->start_time ?: '08:00:00';
         $scheduledStart = $this->am_in->copy()->setTimeFromTimeString($start);
-        $scheduledEnd = ($this->pm_out ?: $this->pm_in)->copy()->setTimeFromTimeString($end);
-        $isLate = $this->am_in->gt($scheduledStart) || (int) $this->late_minutes > 0;
+        $scheduledEnd = ($this->pm_out ?: $this->pm_in)->copy()->setTime(17, 0, 0);
+        $isLate = \App\Services\AttendanceTimeRules::lateMinutes($this->am_in, $scheduledStart) > 0;
         $isEarlyOut = (bool) $this->pm_out && $this->pm_out->lt($scheduledEnd);
 
         if ($isLate && $isEarlyOut) {

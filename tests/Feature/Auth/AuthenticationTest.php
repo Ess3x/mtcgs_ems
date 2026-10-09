@@ -52,6 +52,38 @@ class AuthenticationTest extends TestCase
         ]);
     }
 
+    public function test_five_failed_login_attempts_lock_the_account_for_three_minutes(): void
+    {
+        $user = User::factory()->create();
+        $credentials = [
+            'email' => $user->email,
+            'password' => 'wrong-password',
+        ];
+
+        foreach (range(1, 4) as $attempt) {
+            $this->post('/login', $credentials)->assertRedirect();
+        }
+
+        $response = $this->from('/login')->followingRedirects()->post('/login', $credentials);
+        $response->assertOk();
+        $response->assertSee('id="loginLockoutCountdown"', false);
+        $this->assertGuest();
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ])->assertSessionHas('login_lockout_seconds');
+        $this->assertGuest();
+
+        $this->travel(181)->seconds();
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_users_can_logout(): void
     {
         $user = User::factory()->create();

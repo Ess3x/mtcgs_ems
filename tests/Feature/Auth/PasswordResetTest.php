@@ -70,4 +70,22 @@ class PasswordResetTest extends TestCase
             return true;
         });
     }
+
+    public function test_password_reset_email_uses_mtcgs_branding(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create();
+
+        $this->post('/forgot-password', ['email' => $user->email]);
+
+        Notification::assertSentTo($user, ResetPassword::class, function ($notification) use ($user) {
+            $mail = $notification->toMail($user);
+
+            $this->assertSame('emails.password-reset', $mail->view);
+            $this->assertStringContainsString('MTCGS', $mail->render());
+
+            return true;
+        });
+    }
 }

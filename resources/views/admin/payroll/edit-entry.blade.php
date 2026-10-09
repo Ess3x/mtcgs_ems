@@ -2,7 +2,7 @@
 
 @section('title', $isReadOnly ? 'View Payroll Entry' : 'Edit Payroll Entry')
 
-@section('styles')
+@push('styles')
 <style>
     .payroll-summary-card {
         border: 1px solid #e5e7eb;
@@ -37,6 +37,14 @@
         padding: 1.2rem;
         margin-bottom: 1.25rem;
         box-shadow: 0 8px 20px rgba(15, 23, 42, 0.02);
+    }
+    .payroll-entry-page {
+        max-width: 1120px;
+        margin: 0 auto;
+    }
+    .payroll-entry-page .payroll-section .row > .col-md-3 {
+        flex: 0 0 100%;
+        max-width: 100%;
     }
     .payroll-section-header {
         display: flex;
@@ -173,15 +181,21 @@
     body.dark-mode .payroll-section .text-muted {
         color: #cbd5e1 !important;
     }
+    @media (max-width: 767.98px) {
+        .payroll-entry-page .payroll-section .row > .col-md-3 {
+            flex-basis: 100%;
+            max-width: 100%;
+        }
+    }
     body.dark-mode input.payroll-field::placeholder,
     body.dark-mode .payroll-field::placeholder {
         color: rgba(226, 232, 240, 0.75) !important;
     }
 </style>
-@endsection
+@endpush
 
 @section('content')
-<div class="container-fluid">
+<div class="container-fluid payroll-entry-page">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 mb-1">{{ $isReadOnly ? 'View Payroll Entry' : 'Edit Payroll Entry' }}</h1>
@@ -227,6 +241,14 @@
                 <div class="col-md-2 col-sm-6">
                     <div class="payroll-summary-card">
                         <div class="card-body">
+                            <span class="payroll-summary-label">Total Half Day</span>
+                            <span class="payroll-summary-value">{{ $dtrStats['half_day_days'] ?? 0 }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <div class="payroll-summary-card">
+                        <div class="card-body">
                             <span class="payroll-summary-label">Late Minutes</span>
                             <span class="payroll-summary-value">{{ $dtrStats['late_minutes'] ?? 0 }}</span>
                         </div>
@@ -256,6 +278,30 @@
                         </div>
                     </div>
                 </div>
+                <div class="col-md-2 col-sm-6">
+                    <div class="payroll-summary-card">
+                        <div class="card-body">
+                            <span class="payroll-summary-label">Total Holiday</span>
+                            <span class="payroll-summary-value">{{ $dtrStats['total_holidays'] ?? 0 }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <div class="payroll-summary-card">
+                        <div class="card-body">
+                            <span class="payroll-summary-label">Total Suspension</span>
+                            <span class="payroll-summary-value">{{ $dtrStats['total_suspensions'] ?? 0 }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-2 col-sm-6">
+                    <div class="payroll-summary-card">
+                        <div class="card-body">
+                            <span class="payroll-summary-label">Total Suspended Hours</span>
+                            <span class="payroll-summary-value">{{ number_format((float) ($dtrStats['total_suspended_hours'] ?? 0), 2) }} hrs</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -269,32 +315,40 @@
 
                 @php
                     $daysPresentValue = $dtrStats['days_present'] ?? $entry->days_present ?? 0;
+                    $halfDayDaysValue = (int) ($dtrStats['half_day_days'] ?? 0);
                     $daysAbsentValue = (int) ($dtrStats['days_absent'] ?? $entry->days_absent ?? 0);
                     $isFinanceHead = $isFinanceHead ?? auth()->user()->isFinanceHead();
+                    $canCorrectReturnedEntry = $canCorrectReturnedEntry ?? ($entry->correction_stage === 'fh_correction' && (auth()->user()?->isFinanceHead() || auth()->user()?->role === 'finance_head'));
                     $workingDaysValue = max(1, $entry->dtr?->getWorkingDays() ?? ($daysPresentValue + $daysAbsentValue + (int) ($dtrStats['paid_leave'] ?? 0) + (int) ($dtrStats['leave_without_pay'] ?? 0)));
                     $defaultDailyRateValue = $entry->basic_pay > 0 ? $entry->basic_pay / $workingDaysValue : 0;
-                    $isDailyRateLocked = !$isFinanceHead && $entry->status === 'approved' && $entry->payrollPeriod?->status === 'approved';
+                    $isDailyRateLocked = $entry->status === 'approved' || ($entry->payrollPeriod?->status === 'approved' && !$isFinanceHead);
                     $entryBreakdown = is_string($entry->payroll_breakdown) ? json_decode($entry->payroll_breakdown, true) ?? [] : (array) $entry->payroll_breakdown;
-                    $storedDailyRateValue = isset($entryBreakdown['daily_rate']) && $entry->status === 'approved'
+                    $holidayBonusValue = (float) old('holiday_bonus', $entryBreakdown['holiday_bonus'] ?? 0);
+                    $holidayDeductionValue = (float) ($dtrStats['holiday_deduction'] ?? 0);
+                    $suspensionDeductionValue = (float) ($dtrStats['suspension_deduction'] ?? 0);
+                    $suspendedHoursToPayValue = (float) old('suspended_hours_to_pay', $entryBreakdown['suspended_hours_to_pay'] ?? ($dtrStats['total_suspended_hours'] ?? 0));
+                    $storedDailyRateValue = isset($entryBreakdown['daily_rate']) && is_numeric($entryBreakdown['daily_rate'])
                         ? (float) $entryBreakdown['daily_rate']
                         : $defaultDailyRateValue;
                     $storedCashAdvanceValue = (float) ($entry->cash_advance_deduction ?? 0) > 0
                         ? (float) $entry->cash_advance_deduction
                         : (float) ($entryBreakdown['cash_advance_deduction'] ?? 0);
                     $cashAdvanceValue = old('cash_advance_deduction', $storedCashAdvanceValue);
+                    $cashChargeValue = (float) ($entry->cash_charge_deduction ?? 0);
                     $dailyRateValue = $storedDailyRateValue;
                     $totalDailyRateValue = $daysPresentValue * $dailyRateValue;
                     $lateMinutesTotal = (int) ($dtrStats['late_minutes'] ?? 0);
                     $earlyOutMinutesTotal = (int) ($dtrStats['early_out_minutes'] ?? 0);
-                    $lateDeductionValue = $lateMinutesTotal * 0.48;
-                    $earlyOutDeductionValue = $dailyRateValue > 0
-                        ? min($dailyRateValue, $dailyRateValue * ($earlyOutMinutesTotal / (8 * 60)))
-                        : 0;
+                    $lateDeductionValue = $lateMinutesTotal;
+                    $earlyOutDeductionValue = $earlyOutMinutesTotal;
                     $paidLeaveTotal = (int) ($dtrStats['paid_leave'] ?? 0);
                     $leaveWithoutPayTotal = (int) ($dtrStats['leave_without_pay'] ?? 0);
                     $paidLeaveValue = $paidLeaveTotal * $dailyRateValue;
                     $leaveWithoutPayValue = $leaveWithoutPayTotal * $dailyRateValue;
                     $absentDeductionValue = $daysAbsentValue * $dailyRateValue;
+                    $halfDayDeductionValue = $halfDayDaysValue * $dailyRateValue * 0.5;
+                    $suspensionPayValue = $suspendedHoursToPayValue * \App\Services\PayrollComputationService::SUSPENSION_HOURLY_RATE;
+                    $overtimePayDisplayValue = (float) ($entry->overtime_pay ?? 0) + $holidayBonusValue + $suspensionPayValue;
                 @endphp
                 <div class="payroll-section">
                     <div class="payroll-section-header">
@@ -312,10 +366,6 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label>Total Daily Rate</label>
-                            <input type="text" id="total_daily_rate_display" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($totalDailyRateValue, 2) }}" readonly>
-                        </div>
-                        <div class="col-md-3">
                             <label>Daily Rate</label>
                             <div class="payroll-currency-group input-group">
                                 <span class="input-group-text">₱</span>
@@ -323,49 +373,44 @@
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label>Late Deduction (Per Minute)</label>
-                            <input type="text" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($lateDeductionValue, 2) }}" readonly>
-                            <input type="hidden" name="late_deduction" value="{{ old('late_deduction', number_format($lateDeductionValue, 2, '.', '')) }}">
+                            <label>Total Daily Rate</label>
+                            <input type="text" id="total_daily_rate_display" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($totalDailyRateValue, 2) }}" readonly>
                         </div>
                     </div>
                 </div>
 
                 <div class="payroll-section">
                     <div class="payroll-section-header">
-                        <h5>Leave & Absence Summary</h5>
-                        <span class="badge bg-primary-subtle text-primary">DTR-driven</span>
+                        <h5>Additions</h5>
+                        <span class="badge bg-success-subtle text-success">Earnings</span>
                     </div>
                     <div class="row g-3">
                         <div class="col-md-3">
-                            <label>Early Out Deduction</label>
+                            <label>Holiday Bonus</label>
                             <div class="payroll-currency-group input-group">
                                 <span class="input-group-text">₱</span>
-                                <input type="number" step="0.01" name="early_out_deduction" class="form-control payroll-field" value="{{ old('early_out_deduction', number_format($earlyOutDeductionValue, 2, '.', '')) }}" min="0" {{ $isFinanceHead ? '' : 'readonly' }}>
+                                <input type="number" step="0.01" name="holiday_bonus" id="holiday_bonus_input" class="form-control payroll-field status-controlled-field" value="{{ number_format($holidayBonusValue, 2, '.', '') }}" min="0" {{ $isFinanceHead ? '' : 'readonly' }}>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label>Total Absent Days</label>
-                            <input type="number" class="form-control payroll-field payroll-readonly" value="{{ $daysAbsentValue }}" readonly>
-                            <input type="hidden" name="days_absent" value="{{ $daysAbsentValue }}">
-                        </div>
-                        <div class="col-md-3">
-                            <label>Total Absent Rate Deduction</label>
+                            <label>Overtime Pay</label>
                             <div class="payroll-currency-group input-group">
                                 <span class="input-group-text">₱</span>
-                                <input type="number" step="0.01" id="absent_deduction_input" name="absent_deduction" class="form-control payroll-field" value="{{ old('absent_deduction', number_format($absentDeductionValue, 2, '.', '')) }}" min="0" {{ $isFinanceHead ? '' : 'readonly' }}>
+                                <input type="text" id="overtime_pay_display" class="form-control payroll-field payroll-readonly" value="{{ number_format($overtimePayDisplayValue, 2, '.', '') }}" readonly>
                             </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Suspended Work Hours to Pay</label>
+                            <input type="number" step="0.25" min="0" max="24" name="suspended_hours_to_pay" id="suspended_hours_to_pay_input" class="form-control payroll-field status-controlled-field" value="{{ number_format($suspendedHoursToPayValue, 2, '.', '') }}" {{ $isFinanceHead ? '' : 'readonly' }}>
+                            <small class="text-muted">₱60 per suspended work hour.</small>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Suspension Pay</label>
+                            <input type="text" id="suspension_pay_display" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($suspensionPayValue, 2) }}" readonly>
                         </div>
                         <div class="col-md-3">
                             <label>Total Paid Leave</label>
                             <input type="number" name="paid_leave" class="form-control payroll-field payroll-readonly" value="{{ old('paid_leave', $paidLeaveTotal) }}" min="0" readonly>
-                        </div>
-                        <div class="col-md-3">
-                            <label>Total Leave Without Pay</label>
-                            <div class="payroll-currency-group input-group">
-                                <span class="input-group-text">₱</span>
-                                <input type="number" step="0.01" id="leave_without_pay_input" name="leave_without_pay_amount" class="form-control payroll-field status-controlled-field" value="{{ old('leave_without_pay_amount', number_format($leaveWithoutPayValue, 2, '.', '')) }}" min="0" {{ $isDailyRateLocked ? 'readonly' : '' }}>
-                            </div>
-                            <input type="hidden" name="leave_without_pay" value="{{ old('leave_without_pay', $leaveWithoutPayTotal) }}">
                         </div>
                         <div class="col-md-3">
                             <label>Paid Leave Rate</label>
@@ -376,8 +421,76 @@
 
                 <div class="payroll-section">
                     <div class="payroll-section-header">
-                        <h5>Contributions & Final Pay</h5>
-                        <span class="badge bg-success-subtle text-success">Summary</span>
+                        <h5>Deductions</h5>
+                        <span class="badge bg-danger-subtle text-danger">Payroll deductions</span>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label>Late Deduction (Per Minute)</label>
+                            <input type="text" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($lateDeductionValue, 2) }}" readonly>
+                            <input type="hidden" name="late_deduction" value="{{ number_format($lateDeductionValue, 2, '.', '') }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label>Early Out Deduction</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="number" step="0.01" name="early_out_deduction" class="form-control deduction-field payroll-field" value="{{ number_format($earlyOutDeductionValue, 2, '.', '') }}" min="0" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Absent Rate Deduction</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="number" step="0.01" id="absent_deduction_input" name="absent_deduction" class="form-control deduction-field payroll-field payroll-readonly" value="{{ number_format($absentDeductionValue, 2, '.', '') }}" min="0" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Half-Day Deduction ({{ $halfDayDaysValue }} half-day{{ $halfDayDaysValue === 1 ? '' : 's' }})</label>
+                            <input type="number" step="0.01" name="half_day_deduction" id="half_day_deduction_input" class="form-control deduction-field payroll-field payroll-readonly" value="{{ number_format($halfDayDeductionValue, 2, '.', '') }}" readonly>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Suspension Deduction</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="number" step="0.01" name="suspension_deduction" class="form-control deduction-field payroll-field status-controlled-field payroll-readonly" value="{{ number_format($suspensionDeductionValue, 2, '.', '') }}" min="0" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Holiday Deduction</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="number" step="0.01" name="holiday_deduction" class="form-control deduction-field payroll-field status-controlled-field payroll-readonly" value="{{ number_format($holidayDeductionValue, 2, '.', '') }}" min="0" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Leave Without Pay</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="number" step="0.01" id="leave_without_pay_input" name="leave_without_pay_amount" class="form-control deduction-field payroll-field status-controlled-field payroll-readonly" value="{{ number_format($leaveWithoutPayValue, 2, '.', '') }}" min="0" readonly>
+                            </div>
+                            <input type="hidden" name="leave_without_pay" value="{{ old('leave_without_pay', $leaveWithoutPayTotal) }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label>Cash Advance Deduction</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="text" name="cash_advance_deduction" class="form-control deduction-field payroll-field" value="{{ $cashAdvanceValue }}" readonly>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Cash Charges</label>
+                            <div class="payroll-currency-group input-group">
+                                <span class="input-group-text">₱</span>
+                                <input type="text" name="cash_charge_deduction" class="form-control deduction-field payroll-field" value="{{ number_format($cashChargeValue, 2, '.', '') }}" readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="payroll-section">
+                    <div class="payroll-section-header">
+                        <h5>Contributions</h5>
+                        <span class="badge bg-primary-subtle text-primary">Statutory</span>
                     </div>
                     <div class="row g-3">
                         <div class="col-md-3">
@@ -408,12 +521,25 @@
                                 <input type="number" step="0.01" name="withholding_tax" class="form-control deduction-field payroll-field status-controlled-field" value="{{ old('withholding_tax', $entry->withholding_tax) }}" min="0" {{ $isDailyRateLocked ? 'readonly' : '' }}>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="payroll-section">
+                    <div class="payroll-section-header">
+                        <h5>Totals</h5>
+                        <span class="badge bg-success-subtle text-success">Payroll summary</span>
+                    </div>
+                    <div class="row g-3">
                         <div class="col-md-3">
-                            <label>Cash Advance Deductions</label>
+                            <label>Gross Pay</label>
                             <div class="payroll-currency-group input-group">
                                 <span class="input-group-text">₱</span>
-                                <input type="number" step="0.01" name="cash_advance_deduction" class="form-control deduction-field payroll-field status-controlled-field" value="{{ $cashAdvanceValue }}" min="0" {{ $isDailyRateLocked ? 'readonly' : '' }}>
+                                <input type="text" id="gross_pay_total" class="form-control payroll-field payroll-readonly" value="{{ number_format((float) ($entry->gross_pay ?? 0), 2, '.', '') }}" readonly>
                             </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Total Deductions</label>
+                            <input type="text" id="total_deductions" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($entry->total_deductions, 2) }}" readonly>
                         </div>
                         <div class="col-md-3">
                             <label>Status</label>
@@ -423,12 +549,8 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label>Total Deductions</label>
-                            <input type="text" id="total_deductions" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($entry->total_deductions, 2) }}" readonly>
-                        </div>
-                        <div class="col-md-3 offset-md-3">
                             <label>Computed Net Pay</label>
-                            <input type="text" id="computed_net_pay" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($entry->gross_pay - $entry->total_deductions, 2) }}" readonly>
+                            <input type="text" id="computed_net_pay" class="form-control payroll-field payroll-readonly" value="₱{{ number_format($entry->gross_pay - $entry->total_deductions + $holidayBonusValue + $suspensionPayValue, 2) }}" readonly>
                         </div>
                     </div>
                 </div>
@@ -449,12 +571,21 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const dailyRateInput = document.getElementById('daily_rate_input');
+        const basicPayInput = document.querySelector('input[name="basic_pay"]');
         const leaveWithoutPayInput = document.getElementById('leave_without_pay_input');
         const absentDeductionInput = document.getElementById('absent_deduction_input');
+        const holidayDeductionInput = document.querySelector('input[name="holiday_deduction"]');
+        const suspensionDeductionInput = document.querySelector('input[name="suspension_deduction"]');
+        const halfDayDeductionInput = document.getElementById('half_day_deduction_input');
+        const suspendedHoursInput = document.getElementById('suspended_hours_to_pay_input');
+        const suspensionPayDisplay = document.getElementById('suspension_pay_display');
         const totalDailyRateDisplay = document.getElementById('total_daily_rate_display');
         const paidLeaveRateDisplay = document.getElementById('paid_leave_rate_display');
+        const grossPayDisplay = document.getElementById('gross_pay_total');
+        const overtimePayDisplay = document.getElementById('overtime_pay_display');
         const totalDeductionsDisplay = document.getElementById('total_deductions');
         const computedNetPayDisplay = document.getElementById('computed_net_pay');
+        const holidayBonusInput = document.getElementById('holiday_bonus_input');
         const statusInput = document.getElementById('status_input');
 
         if (!dailyRateInput || !totalDailyRateDisplay || !paidLeaveRateDisplay) {
@@ -464,10 +595,14 @@
         const daysPresent = Number('{{ $daysPresentValue }}') || 0;
         const paidLeave = Number('{{ $paidLeaveTotal }}') || 0;
         const absentDays = Number('{{ $daysAbsentValue }}') || 0;
+        const halfDayDays = Number('{{ $halfDayDaysValue }}') || 0;
         const leaveWithoutPayDays = Number('{{ $leaveWithoutPayTotal }}') || 0;
-        const basicPay = Number('{{ $entry->basic_pay ?? 0 }}') || 0;
+        const missedHolidayDays = Number('{{ $dtrStats['missed_holiday_days'] ?? 0 }}') || 0;
+        const deductibleSuspensionDays = Number('{{ $dtrStats['deductible_suspension_days'] ?? 0 }}') || 0;
         const overtimePay = Number('{{ $entry->overtime_pay ?? 0 }}') || 0;
+        const suspensionHourlyRate = Number('{{ \App\Services\PayrollComputationService::SUSPENSION_HOURLY_RATE }}') || 0;
         const isFinanceHead = @json($isFinanceHead);
+        const canCorrectReturnedEntry = @json($canCorrectReturnedEntry ?? false);
 
         const formatCurrency = (value) => '₱' + Number(value || 0).toLocaleString('en-US', {
             minimumFractionDigits: 2,
@@ -483,8 +618,12 @@
                 'input[name="pagibig_contribution"]',
                 'input[name="withholding_tax"]',
                 'input[name="cash_advance_deduction"]',
+                'input[name="cash_charge_deduction"]',
                 'input[name="late_deduction"]',
                 'input[name="absent_deduction"]',
+                'input[name="half_day_deduction"]',
+                'input[name="suspension_deduction"]',
+                'input[name="holiday_deduction"]',
                 'input[name="early_out_deduction"]',
                 'input[name="leave_without_pay_amount"]'
             ]);
@@ -503,8 +642,18 @@
 
             if (computedNetPayDisplay) {
                 const rate = Number(dailyRateInput.value) || 0;
-                const computedNetPay = basicPay + overtimePay - totalDeductions;
+                const suspendedHours = Number(suspendedHoursInput?.value) || 0;
+                const suspensionPay = suspendedHours * suspensionHourlyRate;
+                const grossPay = (Number(basicPayInput?.value) || 0) + overtimePay;
+                const holidayBonus = Number(holidayBonusInput?.value || 0);
+                if (overtimePayDisplay) {
+                    overtimePayDisplay.value = (overtimePay + holidayBonus + suspensionPay).toFixed(2);
+                }
+                const computedNetPay = grossPay - totalDeductions + holidayBonus + suspensionPay;
                 computedNetPayDisplay.value = formatCurrency(computedNetPay);
+                if (grossPayDisplay) {
+                    grossPayDisplay.value = formatCurrency(grossPay);
+                }
             }
         };
 
@@ -514,6 +663,11 @@
             const paidLeaveRate = paidLeave * rate;
             const leaveWithoutPayAmount = leaveWithoutPayDays * rate;
             const absentDeduction = absentDays * rate;
+            const halfDayDeduction = halfDayDays * rate * 0.5;
+            const holidayDeduction = missedHolidayDays * rate;
+            const suspensionDeduction = deductibleSuspensionDays * rate;
+            const suspendedHours = Number(suspendedHoursInput?.value) || 0;
+            const suspensionPay = suspendedHours * suspensionHourlyRate;
 
             totalDailyRateDisplay.value = formatCurrency(totalDailyRate);
             paidLeaveRateDisplay.value = formatCurrency(paidLeaveRate);
@@ -525,14 +679,26 @@
             if (absentDeductionInput) {
                 absentDeductionInput.value = absentDeduction.toFixed(2);
             }
+            if (halfDayDeductionInput) {
+                halfDayDeductionInput.value = halfDayDeduction.toFixed(2);
+            }
+            if (holidayDeductionInput) {
+                holidayDeductionInput.value = holidayDeduction.toFixed(2);
+            }
+            if (suspensionDeductionInput) {
+                suspensionDeductionInput.value = suspensionDeduction.toFixed(2);
+            }
+            if (suspensionPayDisplay) {
+                suspensionPayDisplay.value = formatCurrency(suspensionPay);
+            }
 
             syncDeductionSummary();
         };
 
         const syncDailyRateLock = () => {
-            const isApproved = !isFinanceHead && statusInput && statusInput.value === 'approved';
+            const isApproved = statusInput && statusInput.value === 'approved' && !canCorrectReturnedEntry;
             document.querySelectorAll('.status-controlled-field').forEach((field) => {
-                field.readOnly = isApproved;
+                field.readOnly = field.classList.contains('payroll-readonly') || isApproved;
             });
         };
 
@@ -542,8 +708,11 @@
             'input[name="pagibig_contribution"]',
             'input[name="withholding_tax"]',
             'input[name="cash_advance_deduction"]',
+            'input[name="cash_charge_deduction"]',
             'input[name="late_deduction"]',
             'input[name="absent_deduction"]',
+            'input[name="suspension_deduction"]',
+            'input[name="holiday_deduction"]',
             'input[name="early_out_deduction"]'
         ]);
 
@@ -551,6 +720,21 @@
             input.addEventListener('input', syncDeductionSummary);
             input.addEventListener('change', syncDeductionSummary);
         });
+
+        if (holidayBonusInput) {
+            holidayBonusInput.addEventListener('input', syncDeductionSummary);
+            holidayBonusInput.addEventListener('change', syncDeductionSummary);
+        }
+
+        if (suspendedHoursInput) {
+            suspendedHoursInput.addEventListener('input', syncDeductionSummary);
+            suspendedHoursInput.addEventListener('input', updateDerivedValues);
+        }
+
+        if (basicPayInput) {
+            basicPayInput.addEventListener('input', syncDeductionSummary);
+            basicPayInput.addEventListener('change', syncDeductionSummary);
+        }
 
         if (leaveWithoutPayInput) {
             leaveWithoutPayInput.addEventListener('input', syncDeductionSummary);

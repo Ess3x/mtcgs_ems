@@ -16,6 +16,8 @@ use App\Models\PayrollEntry;
 use App\Models\PayrollPeriod;
 use App\Models\User;
 use App\Observers\AuditObserver;
+use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\ServiceProvider;
 
@@ -35,6 +37,21 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Paginator::useBootstrapFive();
+
+        ResetPassword::toMailUsing(function (object $notifiable, string $token) {
+            $resetUrl = url(route('password.reset', [
+                'token' => $token,
+                'email' => $notifiable->getEmailForPasswordReset(),
+            ], false));
+
+            return (new MailMessage)
+                ->subject('Reset Your MTCGS-EMS Password')
+                ->view('emails.password-reset', [
+                    'resetUrl' => $resetUrl,
+                    'user' => $notifiable,
+                    'expiresIn' => config('auth.passwords.'.config('auth.defaults.passwords').'.expire'),
+                ]);
+        });
 
         foreach ([
             AdminProfile::class,

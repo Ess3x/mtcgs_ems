@@ -132,61 +132,7 @@ class DTRController extends Controller
         // Prepare calendar data
         $daysInPeriod = $this->getDaysInPeriod($dtr->period_start, $dtr->period_end, $attendanceLogs, $approvedLeaves, $employeeProfile, $dtr->status);
 
-        // Match the summary values to the exact time-related data rendered in each DTR row.
-        $totalHours = 0.0;
-        $totalLateMinutes = 0;
-        $totalEarlyOutMinutes = 0;
-        $daysPresent = 0;
-        $daysAbsent = 0;
-        $totalPaidLeave = 0;
-        $totalLeaveWithoutPay = 0;
-
-        foreach ($daysInPeriod as $day) {
-            $status = $day['status'] ?? null;
-            $log = $day['log'] ?? null;
-
-            if ($status === 'present' || $status === 'late') {
-                $daysPresent++;
-                $totalHours += $this->calculateLogHours($log);
-            } elseif ($status === 'absent') {
-                $daysAbsent++;
-            } elseif ($status === 'leave') {
-                $totalPaidLeave++;
-            } elseif ($status === 'lwop') {
-                $totalLeaveWithoutPay++;
-            }
-
-            if ($log) {
-                $lateMinutes = DTR::normalizeLateMinutesForLog($log);
-                if ($log->am_in) {
-                    $scheduledStart = $log->am_in->copy()->setTime(7, 0, 0);
-                    if ($log->am_in->greaterThanOrEqualTo($scheduledStart)) {
-                        $lateMinutes = max($lateMinutes, (int) $scheduledStart->diffInMinutes($log->am_in));
-                    }
-                }
-                $totalLateMinutes += $lateMinutes;
-
-                if ($log->pm_out) {
-                    $scheduledPmOut = $log->pm_out->copy()->setTimeFromTimeString(
-                        $log->employeeProfile?->shift?->end_time ?: '17:00:00'
-                    );
-                    if ($log->pm_out->lt($scheduledPmOut)) {
-                        $totalEarlyOutMinutes += max(0, (int) abs($scheduledPmOut->diffInMinutes($log->pm_out)));
-                    }
-                }
-            }
-        }
-
-        $stats = [
-            'total_hours' => round($totalHours, 2),
-            'total_late_minutes' => $totalLateMinutes,
-            'total_early_out_minutes' => $totalEarlyOutMinutes,
-            'days_present' => $daysPresent,
-            'days_absent' => $daysAbsent,
-            'total_paid_leave' => $totalPaidLeave,
-            'total_leave_without_pay' => $totalLeaveWithoutPay,
-            'working_days' => max(1, $daysPresent + $daysAbsent + $totalPaidLeave + $totalLeaveWithoutPay),
-        ];
+        $stats = $this->calculateDtrSummaryStats($daysInPeriod);
 
         return view('employee.dtr.show', compact('dtr', 'attendanceLogs', 'daysInPeriod', 'stats', 'employeeProfile', 'previousDTR', 'nextDTR'));
     }
@@ -212,13 +158,7 @@ class DTRController extends Controller
             ->whereDate('end_date', '>=', $dtr->period_start)
             ->get();
         $daysInPeriod = $this->getDaysInPeriod($dtr->period_start, $dtr->period_end, $attendanceLogs, $approvedLeaves, $dtr->employeeProfile, $dtr->status);
-        $stats = [
-            'total_hours' => round($dtr->total_hours ?? 0, 2),
-            'days_present' => (int) ($dtr->days_present ?? 0),
-            'days_absent' => (int) ($dtr->days_absent ?? 0),
-            'late_minutes' => (int) ($dtr->late_minutes ?? 0),
-            'working_days' => $dtr->getWorkingDays(),
-        ];
+        $stats = $this->calculateDtrSummaryStats($daysInPeriod);
         $dtrEmployeeProfile = $dtr->employeeProfile;
         $signaturePath = $dtrEmployeeProfile?->signature_path;
         if (!$signaturePath) {
@@ -240,6 +180,76 @@ class DTRController extends Controller
             ->setPaper('a4', 'portrait');
 
         return $pdf->download('dtr-' . $employeeProfile->employee_number . '-' . $dtr->period_start->format('Ymd') . '-' . $dtr->period_end->format('Ymd') . '.pdf');
+    }
+
+    private function calculateDtrSummaryStats(array $daysInPeriod): array
+    {
+        $totalHours = 0.0;
+        $totalLateMinutes = 0;
+        $totalEarlyOutMinutes = 0;
+        $daysPresent = 0;
+        $daysAbsent = 0;
+        $totalPaidLeave = 0;
+        $totalLeaveWithoutPay = 0;
+        $totalHolidays = 0;
+        $totalSuspensions = 0;
+        $totalHalfDays = 0;
+        $totalSuspendedHours = 0.0;
+
+        foreach ($daysInPeriod as $day) {
+            $status = $day['status'] ?? null;
+            $log = $day['log'] ?? null;
+            $totalHolidays += !empty($day['is_holiday']) ? 1 : 0;
+
+            if (!empty($day['is_suspension'])) {
+                $totalSuspensions++;
+                $totalSuspendedHours += $this->calculateSuspendedHours($log);
+            }
+
+            if ($status === 'suspension') {
+                continue;
+            }
+
+            if ($status === 'present' || $status === 'late') {
+                $daysPresent++;
+                $totalHours += $this->calculateLogHours($log);
+                if ($log && $log->getDtrStatus() === 'Half Day') {
+                    $totalHalfDays++;
+                }
+            } elseif ($status === 'absent') {
+                $daysAbsent++;
+            } elseif ($status === 'leave') {
+                $totalPaidLeave++;
+            } elseif ($status === 'lwop') {
+                $totalLeaveWithoutPay++;
+            }
+
+            if ($log) {
+                $totalLateMinutes += DTR::normalizeLateMinutesForLog($log);
+
+                if ($log->pm_out) {
+                    $scheduledPmOut = $log->pm_out->copy()->setTime(17, 0, 0);
+                    if ($log->pm_out->lt($scheduledPmOut)) {
+                        $totalEarlyOutMinutes += max(0, (int) abs($scheduledPmOut->diffInMinutes($log->pm_out)));
+                    }
+                }
+            }
+        }
+
+        return [
+            'total_hours' => round($totalHours, 2),
+            'total_late_minutes' => $totalLateMinutes,
+            'total_early_out_minutes' => $totalEarlyOutMinutes,
+            'days_present' => $daysPresent,
+            'days_absent' => $daysAbsent,
+            'total_paid_leave' => $totalPaidLeave,
+            'total_leave_without_pay' => $totalLeaveWithoutPay,
+            'total_holidays' => $totalHolidays,
+            'total_suspensions' => $totalSuspensions,
+            'total_half_days' => $totalHalfDays,
+            'total_suspended_hours' => round($totalSuspendedHours, 2),
+            'working_days' => max(1, $daysPresent + $daysAbsent + $totalPaidLeave + $totalLeaveWithoutPay),
+        ];
     }
 
     public function downloadExcel($dtrId)
@@ -556,6 +566,26 @@ class DTRController extends Controller
         return round($minutes / 60, 2);
     }
 
+    private function calculateSuspendedHours($log): float
+    {
+        if (!$log || !($log->am_in || $log->am_out || $log->pm_in || $log->pm_out)) {
+            return 0.0;
+        }
+
+        $minutes = 0;
+        if ($log->am_in && $log->am_out) {
+            $minutes += $log->am_in->diffInMinutes($log->am_out);
+        }
+        if ($log->pm_in && $log->pm_out) {
+            $minutes += $log->pm_in->diffInMinutes($log->pm_out);
+        }
+        if (!$minutes && $log->am_in && $log->pm_out) {
+            $minutes = $log->am_in->diffInMinutes($log->pm_out);
+        }
+
+        return round($minutes / 60, 2);
+    }
+
     private function calculatePeriodHours($attendanceLogs): float
     {
         $total = 0.0;
@@ -587,8 +617,9 @@ class DTRController extends Controller
         while ($current <= $end) {
             $dateStr = $current->format('Y-m-d');
             $log = $logsByDate->get($dateStr);
+            $isSuspension = $workingDayService->isSuspension($current, $branchId);
             $isHoliday = $workingDayService->isHoliday($current, $branchId);
-            $isWorkingDay = $workingDayService->isWorkingDay($current, $branchId);
+            $isWorkingDay = !$current->isWeekend() && !$isHoliday && !$isSuspension;
             $approvedLeave = $isWorkingDay ? $approvedLeaves->first(function ($leave) use ($current) {
                 return $current->betweenIncluded($leave->start_date, $leave->end_date);
             }) : null;
@@ -601,10 +632,19 @@ class DTRController extends Controller
                 'day_number' => $current->day,
                 'is_weekend' => in_array($current->dayOfWeek, [0, 6]),
                 'is_holiday' => $isHoliday,
+                'is_suspension' => $isSuspension,
                 'log' => $log,
             ];
 
-            if ($isLWOP) {
+            if ($isSuspension) {
+                $dayData['status'] = 'suspension';
+                $dayData['am_in'] = $log?->am_in?->format('h:i A') ?? '--';
+                $dayData['am_out'] = $log?->am_out?->format('h:i A') ?? '--';
+                $dayData['pm_in'] = $log?->pm_in?->format('h:i A') ?? '--';
+                $dayData['pm_out'] = $log?->pm_out?->format('h:i A') ?? '--';
+                $dayData['late_minutes'] = (int) ($log?->late_minutes ?? 0);
+                $dayData['overtime'] = $log?->overtime_hours ?? 0;
+            } elseif ($isLWOP) {
                 $dayData['status'] = 'lwop';
                 $dayData['am_in'] = '--';
                 $dayData['am_out'] = '--';
@@ -635,31 +675,26 @@ class DTRController extends Controller
                     $current->addDay();
                     continue;
                 }
-                $hasLateMinutes = (int) ($log->late_minutes ?? 0) > 0;
-                $scheduledStart = $current->copy()->setTime(7, 0, 0);
-                $isAtOrAfterScheduledStart = $log->am_in && $log->am_in->greaterThanOrEqualTo($scheduledStart);
+                $lateMinutes = DTR::normalizeLateMinutesForLog($log);
                 $dayData['status'] = in_array($logStatus, ['leave', 'leave_paid', 'on leave'])
                     ? 'leave'
-                    : (in_array($logStatus, ['absent', 'a']) ? 'absent' : ($logStatus === 'late' || $hasLateMinutes || $isAtOrAfterScheduledStart ? 'late' : 'present'));
+                    : (in_array($logStatus, ['absent', 'a']) ? 'absent' : ($lateMinutes > 0 ? 'late' : 'present'));
                 $dayData['am_in'] = $log->am_in ? $log->am_in->format('h:i A') : '--';
                 $dayData['am_out'] = $log->am_out ? $log->am_out->format('h:i A') : '--';
                 $dayData['pm_in'] = $log->pm_in ? $log->pm_in->format('h:i A') : '--';
                 $dayData['pm_out'] = $log->pm_out ? $log->pm_out->format('h:i A') : '--';
-                $dayData['late_minutes'] = (int) ($log->late_minutes ?? 0);
-                if ($log->am_in) {
-                    $scheduledStart = $log->am_in->copy()->setTime(7, 0, 0);
-                    if ($log->am_in->greaterThanOrEqualTo($scheduledStart)) {
-                        $dayData['late_minutes'] = max($dayData['late_minutes'], (int) $scheduledStart->diffInMinutes($log->am_in));
-                    }
-                }
+                $dayData['late_minutes'] = $lateMinutes;
                 $dayData['overtime'] = $log->overtime_hours ?? 0;
-                $dayData['is_early_out'] = $log->pm_out && $log->pm_out->lt(\Carbon\Carbon::today()->setTime(17, 0, 0));
+                $dayData['is_early_out'] = $log->pm_out
+                    && $log->pm_out->lt($log->pm_out->copy()->setTime(17, 0, 0));
             } else {
-                $dayData['status'] = $dayData['is_weekend']
-                    ? 'weekend'
-                    : ($isHoliday
-                        ? 'holiday'
-                        : ($current->isPast() ? 'absent' : 'pending'));
+                $dayData['status'] = $isSuspension
+                    ? 'suspension'
+                    : ($dayData['is_weekend']
+                        ? 'weekend'
+                        : ($isHoliday
+                            ? 'holiday'
+                            : ($current->isPast() ? 'absent' : 'pending')));
             }
 
             $days[] = $dayData;

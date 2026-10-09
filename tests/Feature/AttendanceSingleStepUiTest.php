@@ -243,7 +243,7 @@ class AttendanceSingleStepUiTest extends TestCase
         $this->assertSame(1, $branchB->employeeCount());
     }
 
-    public function test_dashboard_recent_attendance_only_shows_today_records(): void
+    public function test_dashboard_recent_attendance_shows_only_people_who_attended_today(): void
     {
         $user = User::create([
             'name' => 'Admin User',
@@ -281,14 +281,30 @@ class AttendanceSingleStepUiTest extends TestCase
             'branch_id' => 1,
             'attendance_date' => today(),
             'am_in' => now()->setTime(7, 30, 0),
+            'pm_out' => now()->setTime(17, 0, 0),
             'status' => 'present',
+        ]);
+
+        AttendanceLog::create([
+            'employee_id' => $employee->user_id,
+            'employee_profile_id' => $employee->id,
+            'branch_id' => 1,
+            'attendance_date' => today(),
+            'status' => 'absent',
         ]);
 
         $response = $this->actingAs($user)->get('/dashboard');
 
         $response->assertOk();
+        $response->assertSeeText('Time-In');
+        $response->assertSeeText('Time-Out');
+        $response->assertDontSeeText('PM In');
+        $response->assertDontSeeText('PM Out');
         $response->assertViewHas('recentAttendance', function ($recentAttendance) {
-            return count($recentAttendance) === 1 && $recentAttendance[0]['date'] === today()->format('M d, Y');
+            return count($recentAttendance) === 1
+                && $recentAttendance[0]['date'] === today()->format('M d, Y')
+                && $recentAttendance[0]['time_in'] !== '--'
+                && $recentAttendance[0]['time_out'] !== '--';
         });
     }
 }

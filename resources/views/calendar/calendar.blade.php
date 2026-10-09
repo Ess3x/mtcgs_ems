@@ -51,6 +51,10 @@
                             <span class="badge bg-warning" style="width: 20px; height: 20px;"></span>
                             <span>Holiday</span>
                         </div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-danger" style="width: 20px; height: 20px;"></span>
+                            <span>Suspension</span>
+                        </div>
                     </div>
                 </div>
                 <div class="card-body pt-0 pb-1 px-2">
@@ -247,8 +251,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 id: @json((string) $event->id),
                 title: @json($event->title),
                 start: @json($event->event_date->format('Y-m-d')),
-                backgroundColor: @json($event->event_type === 'activity' ? '#0d6efd' : '#fd7e14'),
-                borderColor: @json($event->event_type === 'activity' ? '#0d6efd' : '#fd7e14'),
+                backgroundColor: @json($event->event_type === 'activity' ? '#0d6efd' : ($event->event_type === 'suspension' ? '#dc3545' : '#fd7e14')),
+                borderColor: @json($event->event_type === 'activity' ? '#0d6efd' : ($event->event_type === 'suspension' ? '#dc3545' : '#fd7e14')),
                 textColor: '#ffffff',
                 extendedProps: {
                     type: @json($event->event_type),
@@ -374,7 +378,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="col-6">
                             <div class="mb-3">
                                 <strong class="d-block text-muted" style="font-size: 0.85rem;">Type</strong>
-                                <span class="badge bg-${props.type === 'activity' ? 'primary' : 'warning'} p-2">${props.type.charAt(0).toUpperCase() + props.type.slice(1)}</span>
+                                <span class="badge bg-${props.type === 'activity' ? 'primary' : (props.type === 'suspension' ? 'danger' : 'warning')} p-2">${props.type.charAt(0).toUpperCase() + props.type.slice(1)}</span>
                             </div>
                         </div>
                         <div class="col-6">

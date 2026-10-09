@@ -45,7 +45,12 @@
         $withholdingTax = is_numeric($entry->withholding_tax ?? null) ? (float) $entry->withholding_tax : 0;
         $earlyOutDeduction = is_numeric($breakdown['early_out_deduction'] ?? null) ? (float) $breakdown['early_out_deduction'] : 0;
         $cashAdvanceDeduction = is_numeric($entry->cash_advance_deduction ?? null) ? (float) $entry->cash_advance_deduction : 0;
+        $cashChargeDeduction = is_numeric($entry->cash_charge_deduction ?? null) ? (float) $entry->cash_charge_deduction : 0;
         $dailyRate = is_numeric($breakdown['daily_rate'] ?? null) ? (float) $breakdown['daily_rate'] : 0;
+        $suspendedHoursToPay = (float) ($breakdown['suspended_hours_to_pay'] ?? 0);
+        $suspensionPay = (float) ($breakdown['suspension_pay'] ?? 0);
+        $holidayBonus = (float) ($breakdown['holiday_bonus'] ?? 0);
+        $halfDayDeduction = (float) ($breakdown['half_day_deduction'] ?? 0);
         $leaveWithoutPayDays = (int) ($breakdown['leave_without_pay'] ?? 0);
         $paidLeaveDays = (int) ($breakdown['paid_leave'] ?? 0);
         $leaveWithoutPayDeduction = $leaveWithoutPayDays * $dailyRate;
@@ -105,6 +110,14 @@
             <td><strong>Late Rate / Minute:</strong> ₱{{ number_format($lateRatePerMinute, 2) }}</td>
             <td></td>
         </tr>
+        <tr>
+            <td><strong>Total Half Day:</strong> {{ $dtrStats['half_day_days'] ?? 0 }}</td>
+            <td><strong>Total Holiday:</strong> {{ $dtrStats['total_holidays'] ?? 0 }}</td>
+            <td><strong>Total Suspension:</strong> {{ $dtrStats['total_suspensions'] ?? 0 }}</td>
+        </tr>
+        <tr>
+            <td colspan="3"><strong>Total Suspended Hours:</strong> {{ number_format((float) ($dtrStats['total_suspended_hours'] ?? 0), 2) }} hrs</td>
+        </tr>
     </table>
 
     <table>
@@ -121,6 +134,20 @@
             <td>PhilHealth Contribution</td>
             <td class="amount" style="text-align: right;">₱{{ number_format($philhealth, 2) }}</td>
         </tr>
+        <tr>
+            <td>Suspended Work ({{ number_format($suspendedHoursToPay, 2) }} hrs)</td>
+            <td class="amount" style="text-align: right;">₱{{ number_format($suspensionPay, 2) }}</td>
+            <td>Half-Day Deduction</td>
+            <td class="amount" style="text-align: right;">₱{{ number_format($halfDayDeduction, 2) }}</td>
+        </tr>
+        @if($holidayBonus > 0)
+        <tr>
+            <td>Holiday Bonus</td>
+            <td class="amount" style="text-align: right;">₱{{ number_format($holidayBonus, 2) }}</td>
+            <td></td>
+            <td></td>
+        </tr>
+        @endif
         <tr>
             <td>Paid Leave</td>
             <td class="amount" style="text-align: right;">₱{{ number_format($paidLeaveDays * $dailyRate, 2) }}</td>
@@ -150,6 +177,12 @@
             <td style="text-align: right;"></td>
             <td>Cash Advance Deduction</td>
             <td class="amount" style="text-align: right;">₱{{ number_format($cashAdvanceDeduction, 2) }}</td>
+        </tr>
+        <tr>
+            <td></td>
+            <td style="text-align: right;"></td>
+            <td>Cash Charges Amount</td>
+            <td class="amount" style="text-align: right;">₱{{ number_format($cashChargeDeduction, 2) }}</td>
         </tr>
         <tr>
             <td></td>

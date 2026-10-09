@@ -56,6 +56,32 @@ class User extends Authenticatable
         }
         return null;
     }
+
+    public function canApplyForCashAdvance(): bool
+    {
+        if ($this->role === 'admin' && $this->admin_type === 'branch_admin') {
+            return true;
+        }
+
+        $profile = match ($this->role) {
+            'employee' => $this->getEmployeeProfile(),
+            'finance_officer' => $this->getFinanceProfile()?->employeeProfile,
+            default => null,
+        };
+        $status = strtolower(trim((string) ($profile?->status ?? '')));
+
+        if ($status === '' && $this->role === 'finance_officer') {
+            $status = strtolower(trim((string) ($this->getFinanceProfile()?->status ?? '')));
+        }
+
+        return in_array($status, [
+            'regular',
+            '1 year of service',
+            '1-2 years in service',
+            '3+ years of service',
+            '3+ year of service',
+        ], true);
+    }
     
     public function getFinanceProfile()
     {

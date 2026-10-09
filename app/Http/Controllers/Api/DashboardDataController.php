@@ -50,7 +50,7 @@ class DashboardDataController extends Controller
                 ->where('late_minutes', '>', 0)
                 ->count(),
             'pending_leaves' => LeaveRequest::where('employee_profile_id', $profile->id)
-                ->where('status', 'pending')
+                ->whereIn('status', ['pending', 'pending_system_admin'])
                 ->count(),
         ];
         
@@ -150,7 +150,7 @@ class DashboardDataController extends Controller
             'late_today' => $lateToday,
             'absent_today' => $absentToday,
             'attendance_rate' => $attendanceRate,
-            'pending_leaves' => LeaveRequest::where('status', 'pending')
+            'pending_leaves' => LeaveRequest::whereIn('status', ['pending', 'pending_system_admin'])
                 ->when($allowedBranchIds !== null, fn ($query) => $query->whereHas('employeeProfile', fn ($employeeQuery) => $employeeQuery->whereIn('branch_id', $allowedBranchIds)))
                 ->count(),
             'pending_verifications' => User::where('id_verification_status', 'pending')

@@ -210,6 +210,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/devices/create', [App\Http\Controllers\Admin\DeviceController::class, 'create'])->name('devices.create');
         Route::post('/devices', [App\Http\Controllers\Admin\DeviceController::class, 'store'])->name('devices.store');
         Route::get('/devices/branches/{branch}', [App\Http\Controllers\Admin\DeviceController::class, 'branchDetails'])->name('devices.branches.show');
+        Route::get('/devices/{device}', [App\Http\Controllers\Admin\DeviceController::class, 'show'])->name('devices.show');
         Route::get('/devices/{device}/edit', [App\Http\Controllers\Admin\DeviceController::class, 'edit'])->name('devices.edit');
         Route::put('/devices/{device}', [App\Http\Controllers\Admin\DeviceController::class, 'update'])->name('devices.update');
         Route::patch('/devices/{device}/status', [App\Http\Controllers\Admin\DeviceController::class, 'updateStatus'])->name('devices.status');
@@ -225,6 +226,7 @@ Route::middleware('auth')->group(function () {
     });
     Route::post('/notifications/read-all', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('notifications.read-all');
     Route::get('/notifications/{notification}/read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('notifications.read');
+    Route::delete('/notifications/{notification}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('notifications.destroy');
     
     // Calendar routes (all authenticated users can view)
     Route::prefix('calendar')->name('calendar.')->group(function () {
@@ -269,6 +271,7 @@ Route::middleware('auth')->group(function () {
         
         // Calendar Management (Admin only)
         Route::resource('calendar', App\Http\Controllers\CalendarController::class)->except(['show']);
+        Route::post('/calendar/{calendar}/approve', [App\Http\Controllers\CalendarController::class, 'approve'])->name('calendar.approve');
         
         // Branches routes
         Route::resource('branches', App\Http\Controllers\Admin\BranchController::class);
@@ -386,10 +389,12 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     // Leave Credits Management (Super Admin Only)
     Route::get('/leave-credits', [App\Http\Controllers\LeaveController::class, 'manageCredits'])->name('leave-credits.index');
     Route::post('/leave-credits/{employee}', [App\Http\Controllers\LeaveController::class, 'updateCredits'])->name('leave-credits.update');
+    Route::post('/leave-credits/{employee}/reset-used', [App\Http\Controllers\LeaveController::class, 'resetUsedCredits'])->name('leave-credits.reset-used');
 
     // Cash Charges Management
     Route::get('/cash-charges', [App\Http\Controllers\LeaveController::class, 'manageCashCharges'])->name('cash-charges.index');
     Route::post('/cash-charges', [App\Http\Controllers\LeaveController::class, 'storeCashCharge'])->name('cash-charges.store');
+    Route::get('/cash-charges/{cashCharge}/evidence', [App\Http\Controllers\LeaveController::class, 'cashChargeEvidence'])->name('cash-charges.evidence');
     Route::post('/cash-charges/{employee}/request-update', [App\Http\Controllers\LeaveController::class, 'requestCashChargeBalanceUpdate'])->name('cash-charges.request-update');
     Route::post('/cash-charges/{cashCharge}/approve', [App\Http\Controllers\LeaveController::class, 'approveCashCharge'])->name('cash-charges.approve');
     Route::post('/cash-charges/{cashCharge}/archive', [App\Http\Controllers\LeaveController::class, 'archiveCashCharge'])->name('cash-charges.archive');
@@ -418,6 +423,7 @@ Route::middleware('auth')->prefix('admin')->name('admin.')->group(function () {
     Route::get('/audit-logs', [App\Http\Controllers\Admin\AuditLogController::class, 'index'])->name('audit-logs');
     Route::get('/login-history', [App\Http\Controllers\Admin\LoginHistoryController::class, 'index'])->name('login-history');
     Route::get('/user-management', [App\Http\Controllers\Admin\UserManagementController::class, 'index'])->name('user-management');
+    Route::get('/employee/{type}/{id}/profile', [App\Http\Controllers\Admin\UserManagementController::class, 'profile'])->name('employee.profile');
     Route::get('/user-management/{role}/{id}', [App\Http\Controllers\Admin\UserManagementController::class, 'show'])->name('user-view');
     Route::get('/user-management/{role}/{id}/edit', [App\Http\Controllers\Admin\UserManagementController::class, 'edit'])->name('user-edit');
     Route::put('/user-management/{role}/{id}', [App\Http\Controllers\Admin\UserManagementController::class, 'update'])->name('user-update');

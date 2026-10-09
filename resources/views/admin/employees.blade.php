@@ -108,6 +108,7 @@
             width: auto;
             max-width: 100%;
             overflow-x: auto;
+            overflow-y: hidden;
             background: transparent;
             border-bottom: 1px solid #dee2e6;
         }

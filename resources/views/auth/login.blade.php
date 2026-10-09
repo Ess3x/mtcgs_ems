@@ -268,6 +268,10 @@
                     <div class="alert alert-success py-2">{{ session('success') }}</div>
                 @endif
 
+                @if(session('status'))
+                    <div class="alert alert-success py-2">{{ session('status') }}</div>
+                @endif
+
                 @if($errors->any())
                     <div class="alert alert-danger py-2">
                         @foreach($errors->all() as $error)
@@ -304,6 +308,12 @@
                         <i class="fas fa-sign-in-alt me-1"></i> Login
                     </button>
                 </form>
+
+                <div class="text-center mt-3">
+                    <a href="{{ route('password.request') }}" class="back-link fw-semibold">
+                        <i class="fas fa-key me-1"></i> Forgot Password?
+                    </a>
+                </div>
 
                 <div class="text-center mt-4">
                     <a href="{{ url('/') }}" class="back-link">

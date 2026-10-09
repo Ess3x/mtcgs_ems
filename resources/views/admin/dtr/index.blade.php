@@ -29,13 +29,53 @@
         background-color: #334155;
         border-color: #64748b #64748b #334155;
     }
+
+    body.dark-mode .dtr-management-page .table-responsive {
+        background-color: #111827 !important;
+        border-color: #475569 !important;
+    }
+
+    body.dark-mode .dtr-management-page .table {
+        --bs-table-bg: #111827;
+        --bs-table-color: #f8fafc;
+        --bs-table-border-color: #475569;
+        color: #f8fafc;
+    }
+
+    body.dark-mode .dtr-management-page .table thead th {
+        background-color: #1f2937 !important;
+        color: #cbd5e1 !important;
+        border-color: #475569 !important;
+    }
+
+    body.dark-mode .dtr-management-page .table tbody tr,
+    body.dark-mode .dtr-management-page .table tbody td {
+        background-color: #111827 !important;
+        border-color: #475569 !important;
+        color: #f8fafc;
+    }
+
+    body.dark-mode .dtr-management-page .table tbody td .text-dark {
+        color: #f8fafc !important;
+    }
+
+    body.dark-mode .dtr-management-page .table .text-success { color: #4ade80 !important; }
+    body.dark-mode .dtr-management-page .table .text-danger { color: #f87171 !important; }
+    body.dark-mode .dtr-management-page .table .text-warning { color: #facc15 !important; }
+    body.dark-mode .dtr-management-page .table .text-info { color: #67e8f9 !important; }
+    body.dark-mode .dtr-management-page .table .text-primary { color: #93c5fd !important; }
+    body.dark-mode .dtr-management-page .table .text-muted { color: #cbd5e1 !important; }
+
+    body.dark-mode .dtr-management-page .dtr-management-hero {
+        background: #9132a8 !important;
+    }
 </style>
 
 <div class="container-fluid py-4 dtr-management-page" style="background-color: #0a1221; min-height: 100vh;">
     <!-- Header Section -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card border-0 shadow-sm rounded-4" style="background: linear-gradient(135deg, #4f8fe9 0%, #3a73d8 100%); color: white;">
+            <div class="card border-0 shadow-sm rounded-4 dtr-management-hero" style="background: linear-gradient(135deg, #4f8fe9 0%, #3a73d8 100%); color: white;">
                 <div class="card-body p-4">
                     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
                         <div>
@@ -188,6 +228,17 @@
                                                         $current->addDay();
                                                     }
                                                 }
+                                                $workingDayService = app(\App\Services\WorkingDayService::class);
+                                                $branchId = $firstDtr?->employeeProfile?->branch_id;
+                                                $today = \Carbon\Carbon::today(config('app.timezone'));
+                                                $calendarStatuses = [];
+                                                foreach ($periodHeaders as $headerDate) {
+                                                    $dateStr = $headerDate->format('Y-m-d');
+                                                    $calendarStatuses[$dateStr] = [
+                                                        'holiday' => $workingDayService->isHoliday($headerDate, $branchId),
+                                                        'suspension' => $workingDayService->isSuspension($headerDate, $branchId),
+                                                    ];
+                                                }
                                             @endphp
 
                                             <table class="table table-sm align-middle mb-0" style="border-collapse: collapse; border: 1px solid #c8ced6;">
@@ -233,6 +284,18 @@
                                                                     $dateStr = $headerDate->format('Y-m-d');
                                                                     $log = $logsByDate->get($dateStr);
                                                                     $approvedLeave = $approvedLeaveByDate[$dateStr] ?? null;
+                                                                    $calendarStatus = $calendarStatuses[$dateStr] ?? [];
+                                                                    $isHoliday = $calendarStatus['holiday'] ?? false;
+                                                                    $isSuspension = $calendarStatus['suspension'] ?? false;
+                                                                    $noAttendanceStatus = $isSuspension
+                                                                        ? 'Suspension'
+                                                                        : ($isHoliday ? 'Holiday' : ($headerDate->lt($today) ? 'Absent' : 'Pending'));
+                                                                    $noAttendanceClass = match ($noAttendanceStatus) {
+                                                                        'Absent', 'Suspension' => 'text-danger fw-bold',
+                                                                        'Holiday' => 'text-warning fw-bold',
+                                                                        default => 'text-muted',
+                                                                    };
+                                                                    $hasAnyAttendanceTime = $log && ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out);
                                                                     $statusText = '';
                                                                     $statusClass = 'text-muted';
                                                                     $inTimeClass = 'small fw-bold text-dark';
@@ -242,34 +305,39 @@
                                                                         $statusText = (bool) $approvedLeave->is_absent ? 'Leave Without Pay' : 'Paid Leave';
                                                                         $statusClass = (bool) $approvedLeave->is_absent ? 'text-warning fw-bold' : 'text-info fw-bold';
                                                                     } elseif ($log) {
-                                                                        $hasAnyAttendanceTime = (bool) ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out);
-                                                                        $statusText = $hasAnyAttendanceTime ? $log->getDtrStatus() : 'Pending';
-                                                                        $shift = $log->employeeProfile?->shift;
-                                                                        $scheduledStart = $shift?->start_time ?: '07:00:00';
-                                                                        $scheduledEnd = $shift?->end_time ?: '17:00:00';
+                                                                        $statusText = $hasAnyAttendanceTime ? $log->getDtrStatus() : $noAttendanceStatus;
+                                                                        $statusClass = $hasAnyAttendanceTime ? 'text-success fw-bold' : $noAttendanceClass;
 
-                                                                        if ($log->am_in) {
-                                                                            $inTimeClass = $log->am_in->gt($log->am_in->copy()->setTimeFromTimeString($scheduledStart)) ? 'small fw-bold text-danger' : 'small fw-bold text-success';
-                                                                        }
+                                                                        if ($hasAnyAttendanceTime) {
+                                                                            $shift = $log->employeeProfile?->shift;
+                                                                            $scheduledStart = $shift?->start_time ?: '08:00:00';
+                                                                            $scheduledEnd = $shift?->end_time ?: '17:00:00';
 
-                                                                        if ($log->pm_out) {
-                                                                            $outTimeClass = $log->pm_out->lt($log->pm_out->copy()->setTimeFromTimeString($scheduledEnd)) ? 'small fw-bold text-danger' : 'small fw-bold text-success';
-                                                                        }
+                                                                            if ($log->am_in) {
+                                                                                $scheduledStartTime = $log->am_in->copy()->setTimeFromTimeString($scheduledStart);
+                                                                                $isLateTimeIn = \App\Services\AttendanceTimeRules::lateMinutes($log->am_in, $scheduledStartTime) > 0;
+                                                                                $inTimeClass = $isLateTimeIn ? 'small fw-bold text-danger' : 'small fw-bold text-success';
+                                                                            }
 
-                                                                        if ($statusText === 'Half Day') {
-                                                                            $statusClass = 'text-primary fw-bold';
-                                                                        } elseif (in_array($statusText, ['Late', 'Early Out', 'Late / Early Out', 'Absent'], true)) {
-                                                                            $statusClass = 'text-danger fw-bold';
-                                                                        } elseif ($statusText === 'Present') {
-                                                                            $statusClass = 'text-success fw-bold';
+                                                                            if ($log->pm_out) {
+                                                                                $outTimeClass = $log->pm_out->lt($log->pm_out->copy()->setTimeFromTimeString($scheduledEnd)) ? 'small fw-bold text-danger' : 'small fw-bold text-success';
+                                                                            }
+
+                                                                            if ($statusText === 'Half Day') {
+                                                                                $statusClass = 'text-primary fw-bold';
+                                                                            } elseif (in_array($statusText, ['Late', 'Early Out', 'Late / Early Out', 'Absent'], true)) {
+                                                                                $statusClass = 'text-danger fw-bold';
+                                                                            } elseif ($statusText === 'Present') {
+                                                                                $statusClass = 'text-success fw-bold';
+                                                                            }
                                                                         }
                                                                     } else {
-                                                                        $statusText = 'Pending';
-                                                                        $statusClass = 'text-muted';
+                                                                        $statusText = $noAttendanceStatus;
+                                                                        $statusClass = $noAttendanceClass;
                                                                     }
                                                                 @endphp
                                                                 <td class="text-center align-middle" style="min-width: 76px; width: 90px; border: 1px solid #c8ced6; padding: 0.5rem 0.2rem; min-height: 72px; text-align: center; vertical-align: middle;">
-                                                                    @if ($log)
+                                                                    @if ($log && $hasAnyAttendanceTime)
                                                                         <div class="small fw-semibold text-dark">IN</div>
                                                                         <div class="{{ $inTimeClass }}">{{ $log->am_in ? $log->am_in->format('h:i A') : '--' }}</div>
                                                                         <div class="small fw-semibold text-dark mt-1">OUT</div>
@@ -368,6 +436,7 @@
                                                                     <th class="text-center">Days Present</th>
                                                                     <th class="text-center">Total Hours</th>
                                                                     <th class="text-center">Overtime</th>
+                                                                    <th class="text-center">Status</th>
                                                                     <th class="text-center">Action</th>
                                                                 </tr>
                                                             </thead>
@@ -389,12 +458,27 @@
                                                                                 <span class="text-white-50">--</span>
                                                                             @endif
                                                                         </td>
+                                                                        <td class="text-center text-nowrap">
+                                                                            @if ($dtr->status === 'pending_finance_head')
+                                                                                <span class="badge bg-info text-dark">Approved by HR</span>
+                                                                                <div class="small text-white-50 mt-1">Awaiting FH Computation</div>
+                                                                            @else
+                                                                                <span class="badge bg-success">Approved</span>
+                                                                            @endif
+                                                                        </td>
                                                                         <td class="text-center">
                                                                             <div class="d-flex justify-content-center gap-2 flex-wrap">
                                                                                 <a href="{{ route('admin.dtr.show', $dtr->id) }}" class="btn btn-sm btn-outline-info" title="View Details">
                                                                                     <i class="fas fa-eye"></i>
                                                                                 </a>
-                                                                                @if(Auth::user()->isFinanceOfficer())
+                                                                                @if(Auth::user()->isFinanceHead() && $dtr->status === 'pending_finance_head')
+                                                                                    <form method="POST" action="{{ route('admin.dtr.compute', $dtr->id) }}" class="d-inline">
+                                                                                        @csrf
+                                                                                        <button type="submit" class="btn btn-sm btn-warning" title="Compute DTR" onclick="return confirm('Compute and finalize this HR-approved DTR for payroll?')">
+                                                                                            <i class="fas fa-calculator"></i>
+                                                                                        </button>
+                                                                                    </form>
+                                                                                @elseif(Auth::user()->isFinanceOfficer())
                                                                                     <a href="{{ route('finance.payroll-generation.ready-dtrs') }}" class="btn btn-sm btn-success" title="Generate Payroll">
                                                                                         <i class="fas fa-calculator"></i>
                                                                                     </a>

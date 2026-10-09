@@ -8,6 +8,7 @@ use App\Models\PayrollPeriod;
 use App\Models\PayrollEntry;
 use App\Models\Employee;
 use App\Models\User;
+use App\Models\CashAdvanceApplication;
 use App\Models\LeaveRequest;
 use App\Services\PayrollService;
 use App\Services\PayrollComputationService;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Mail\PayrollProcessed;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class PayrollController extends Controller
 {
@@ -216,29 +218,56 @@ class PayrollController extends Controller
             $entryBreakdown = is_string($entry->payroll_breakdown)
                 ? (json_decode($entry->payroll_breakdown, true) ?? [])
                 : (array) ($entry->payroll_breakdown ?? []);
-            $dailyRate = (float) ($calculation['daily_rate'] ?? $entryBreakdown['daily_rate'] ?? 0);
+            $holidayBonus = (float) ($entryBreakdown['holiday_bonus'] ?? 0);
+            $holidayDeduction = (float) ($entryBreakdown['holiday_deduction'] ?? 0);
+            $suspensionDeduction = (float) ($entryBreakdown['suspension_deduction'] ?? 0);
+            $storedDailyRate = isset($entryBreakdown['daily_rate']) && is_numeric($entryBreakdown['daily_rate'])
+                ? (float) $entryBreakdown['daily_rate']
+                : 0.0;
+            $dailyRate = $storedDailyRate > 0
+                ? $storedDailyRate
+                : (float) ($calculation['daily_rate'] ?? 0);
+            $halfDayDays = (int) ($entryBreakdown['half_day_days'] ?? $dtrBreakdown['half_day_days'] ?? 0);
+            $halfDayDeduction = $halfDayDays * $dailyRate * 0.5;
+            $suspendedHoursToPay = (float) ($entryBreakdown['suspended_hours_to_pay'] ?? 0);
+            $suspensionPay = $this->payrollComputationService->calculateSuspensionPay($suspendedHoursToPay);
             $leaveWithoutPayDeduction = (int) ($dtrBreakdown['leave_without_pay'] ?? 0) * $dailyRate;
-            $earlyOutDeduction = (float) ($entryBreakdown['early_out_deduction'] ?? 0);
+            $lateDeduction = (float) ($calculation['late_deduction'] ?? 0);
+            $earlyOutDeduction = (float) ($calculation['early_out_deduction'] ?? 0);
 
             $entry->days_present = (int) ($dtrBreakdown['days_present'] ?? 0);
             $entry->days_absent = (int) ($dtrBreakdown['days_absent'] ?? 0);
+            $entry->late_deduction = $lateDeduction;
             $entry->overtime_hours = $calculation['overtime_hours'] ?? 0;
             $entry->overtime_pay = $calculation['overtime_pay'] ?? 0;
-            $entry->absent_deduction = (float) ($calculation['absent_deduction'] ?? 0);
+            $entry->absent_deduction = (int) $entry->days_absent * $dailyRate;
             $entry->gross_pay = (float) $entry->basic_pay + (float) $entry->overtime_pay;
             $entry->total_deductions = (float) $entry->sss_contribution
                 + (float) $entry->philhealth_contribution
                 + (float) $entry->pagibig_contribution
                 + (float) $entry->withholding_tax
                 + (float) ($entry->cash_advance_deduction ?? 0)
-                + (float) ($entry->late_deduction ?? 0)
+                + (float) ($entry->cash_charge_deduction ?? 0)
+                + $lateDeduction
                 + (float) $entry->absent_deduction
                 + $leaveWithoutPayDeduction
-                + $earlyOutDeduction;
-            $entry->net_pay = (float) $entry->gross_pay - (float) $entry->total_deductions;
+                + $earlyOutDeduction
+                + $halfDayDeduction
+                + $holidayDeduction
+                + $suspensionDeduction;
+            $entry->net_pay = (float) $entry->gross_pay - (float) $entry->total_deductions + $holidayBonus + $suspensionPay;
             $entryBreakdown['days_present'] = $entry->days_present;
             $entryBreakdown['days_absent'] = $entry->days_absent;
+            $entryBreakdown['late_minutes'] = (int) ($calculation['late_minutes'] ?? 0);
+            $entryBreakdown['early_out_minutes'] = (int) ($calculation['early_out_minutes'] ?? 0);
+            $entryBreakdown['cash_charge_deduction'] = number_format((float) ($entry->cash_charge_deduction ?? 0), 2, '.', '');
+            $entryBreakdown['late_deduction'] = number_format($lateDeduction, 2, '.', '');
+            $entryBreakdown['early_out_deduction'] = number_format($earlyOutDeduction, 2, '.', '');
             $entryBreakdown['daily_rate'] = $dailyRate;
+            $entryBreakdown['half_day_days'] = (int) ($dtrBreakdown['half_day_days'] ?? 0);
+            $entryBreakdown['half_day_deduction'] = number_format($halfDayDeduction, 2, '.', '');
+            $entryBreakdown['suspended_hours_to_pay'] = $suspendedHoursToPay;
+            $entryBreakdown['suspension_pay'] = number_format($suspensionPay, 2, '.', '');
             $entryBreakdown['absent_deduction'] = number_format($entry->absent_deduction, 2, '.', '');
             $entryBreakdown['overtime_pay'] = number_format($entry->overtime_pay, 2, '.', '');
             $entryBreakdown['gross_pay'] = number_format($entry->gross_pay, 2, '.', '');
@@ -305,21 +334,14 @@ class PayrollController extends Controller
             ? (json_decode($entry->payroll_breakdown, true) ?? [])
             : (array) ($entry->payroll_breakdown ?? []);
 
-        $dtrStats = [
-            'days_present' => (int) ($breakdown['days_present'] ?? $entry->days_present ?? 0),
-            'days_absent' => (int) ($breakdown['days_absent'] ?? $entry->days_absent ?? 0),
-            'late_minutes' => (int) ($breakdown['late_minutes'] ?? ($entry->dtr?->getTotalLateMinutes() ?? 0)),
-            'early_out_minutes' => (int) ($breakdown['early_out_minutes'] ?? ($entry->dtr?->getTotalEarlyOutMinutes() ?? 0)),
-            'paid_leave' => (int) ($breakdown['paid_leave'] ?? 0),
-            'leave_without_pay' => (int) ($breakdown['leave_without_pay'] ?? 0),
-        ];
+        $dtrStats = $this->buildPayslipDtrStats($entry, $breakdown);
 
         // Check authorization
         $user = Auth::user();
         if ($user->role === 'finance_officer' && $user->getEffectiveBranchId() !== $entry->payrollPeriod->branch_id) {
             abort(403, 'You can only generate payslips for your assigned branch.');
         }
-        if ($user->role === 'employee' && ($entry->employee->user_id !== $user->id || !$entry->payslip_sent_at)) {
+        if ($user->role === 'employee' && ($entry->employee->user_id !== $user->id || !($entry->payslip_published_at || $entry->payslip_sent_at))) {
             abort(403);
         }
 
@@ -342,26 +364,44 @@ class PayrollController extends Controller
         }
 
         $recipient = $entry->employeeProfile?->user?->email;
-        if (!$recipient) {
-            return back()->with('error', 'This employee does not have an email address.');
-        }
 
         $this->syncEntryFromCurrentDtr($entry);
         $signatures = $this->getPayslipSignatures($entry, Auth::user());
-        $pdfContents = Pdf::loadView('pdf.payslip', array_merge(['entry' => $entry, 'logo' => $this->getPayslipLogo()], $signatures))->output();
-        Mail::to($recipient)->send(new PayrollProcessed($entry, $pdfContents));
+        $breakdown = is_string($entry->payroll_breakdown)
+            ? (json_decode($entry->payroll_breakdown, true) ?? [])
+            : (array) ($entry->payroll_breakdown ?? []);
+        $dtrStats = $this->buildPayslipDtrStats($entry, $breakdown);
+        $pdfContents = Pdf::loadView('pdf.payslip', array_merge(['entry' => $entry, 'dtrStats' => $dtrStats, 'logo' => $this->getPayslipLogo()], $signatures))->output();
+        $isFirstPublication = !$entry->payslip_published_at;
+        $entry->forceFill([
+            'payslip_published_at' => $entry->payslip_published_at ?: now(),
+        ])->save();
+
+        if ($isFirstPublication) {
+            $entry->employeeProfile?->user?->notify(new SystemNotification(
+                'New payslip available',
+                'Your payslip for ' . $entry->payrollPeriod->period_code . ' is now available in My Payslips.',
+                'payroll_processed',
+                route('employee.payslips')
+            ));
+        }
+
+        if (!$recipient) {
+            return back()->with('error', 'The payslip is available in My Payslips, but the employee has no email address, so no email was sent.');
+        }
+
+        try {
+            Mail::to($recipient)->send(new PayrollProcessed($entry, $pdfContents));
+        } catch (TransportExceptionInterface $exception) {
+            report($exception);
+
+            return back()->with('error', 'The payslip is available in My Payslips, but the email could not be sent because the mail server connection or SSL certificate could not be verified. Check the mail server or network certificate, then retry the email.');
+        }
 
         $entry->forceFill([
             'payslip_sent_at' => now(),
             'payslip_sent_to' => $recipient,
         ])->save();
-
-        $entry->employeeProfile?->user?->notify(new SystemNotification(
-            'Payroll and payslip sent',
-            'Your payroll and payslip for ' . $entry->payrollPeriod->period_code . ' were sent by Finance.',
-            'payroll_processed',
-            route('employee.payslips')
-        ));
 
         return back()->with('success', 'Payslip submitted successfully to ' . $recipient . '.');
     }
@@ -376,23 +416,36 @@ class PayrollController extends Controller
             ? (json_decode($entry->payroll_breakdown, true) ?? [])
             : (array) ($entry->payroll_breakdown ?? []);
 
-        $dtrStats = [
-            'days_present' => (int) ($breakdown['days_present'] ?? $entry->days_present ?? 0),
-            'days_absent' => (int) ($breakdown['days_absent'] ?? $entry->days_absent ?? 0),
-            'late_minutes' => (int) ($breakdown['late_minutes'] ?? ($entry->dtr?->getTotalLateMinutes() ?? 0)),
-            'early_out_minutes' => (int) ($breakdown['early_out_minutes'] ?? ($entry->dtr?->getTotalEarlyOutMinutes() ?? 0)),
-            'paid_leave' => (int) ($breakdown['paid_leave'] ?? 0),
-            'leave_without_pay' => (int) ($breakdown['leave_without_pay'] ?? 0),
-        ];
+        $dtrStats = $this->buildPayslipDtrStats($entry, $breakdown);
 
         $user = Auth::user();
-        if ($user->role === 'employee' && ($entry->employee->user_id !== $user->id || !$entry->payslip_sent_at)) {
+        if ($user->role === 'employee' && ($entry->employee->user_id !== $user->id || !($entry->payslip_published_at || $entry->payslip_sent_at))) {
             abort(403);
         }
 
         $signatures = $this->getPayslipSignatures($entry, $user);
 
         return view('admin.payroll.payslip', array_merge(compact('entry', 'dtrStats'), $signatures));
+    }
+
+    protected function buildPayslipDtrStats(PayrollEntry $entry, array $breakdown): array
+    {
+        $dtr = $entry->dtr;
+        $dtrBreakdown = $dtr ? $dtr->getCalculationBreakdown() : [];
+        $calendarStats = $this->calendarAttendanceDeductions($dtr, (float) ($breakdown['daily_rate'] ?? 0));
+
+        return [
+            'days_present' => (int) ($breakdown['days_present'] ?? $entry->days_present ?? 0),
+            'days_absent' => (int) ($breakdown['days_absent'] ?? $entry->days_absent ?? 0),
+            'half_day_days' => (int) ($breakdown['half_day_days'] ?? $dtrBreakdown['half_day_days'] ?? 0),
+            'late_minutes' => (int) ($breakdown['late_minutes'] ?? ($dtr?->getTotalLateMinutes() ?? 0)),
+            'early_out_minutes' => (int) ($breakdown['early_out_minutes'] ?? ($dtr?->getTotalEarlyOutMinutes() ?? 0)),
+            'paid_leave' => (int) ($breakdown['paid_leave'] ?? 0),
+            'leave_without_pay' => (int) ($breakdown['leave_without_pay'] ?? 0),
+            'total_holidays' => (int) $calendarStats['total_holidays'],
+            'total_suspensions' => (int) $calendarStats['total_suspensions'],
+            'total_suspended_hours' => (float) $calendarStats['total_suspended_hours'],
+        ];
     }
 
     protected function getPayslipSignatures(PayrollEntry $entry, User $actor): array
@@ -447,6 +500,10 @@ class PayrollController extends Controller
             $serializedBreakdown = is_string($entry->payroll_breakdown)
                 ? json_decode($entry->payroll_breakdown, true) ?? []
                 : (array) ($entry->payroll_breakdown ?? []);
+            $lateDeduction = (float) $lateMinutes;
+            $earlyOutDeduction = (float) $earlyOutMinutes;
+            $previousLateDeduction = (float) ($entry->late_deduction ?? 0);
+            $previousEarlyOutDeduction = (float) ($serializedBreakdown['early_out_deduction'] ?? 0);
 
             $serializedBreakdown['days_present'] = $daysPresent;
             $serializedBreakdown['days_absent'] = $daysAbsent;
@@ -454,9 +511,28 @@ class PayrollController extends Controller
             $serializedBreakdown['leave_without_pay'] = $leaveWithoutPay;
             $serializedBreakdown['late_minutes'] = $lateMinutes;
             $serializedBreakdown['early_out_minutes'] = $earlyOutMinutes;
+            $serializedBreakdown['late_deduction'] = number_format($lateDeduction, 2, '.', '');
+            $serializedBreakdown['early_out_deduction'] = number_format($earlyOutDeduction, 2, '.', '');
+            if (isset($serializedBreakdown['daily_rate']) && is_numeric($serializedBreakdown['daily_rate'])) {
+                $serializedBreakdown['daily_rate'] = (float) $serializedBreakdown['daily_rate'];
+            }
 
             $entry->days_present = $daysPresent;
             $entry->days_absent = $daysAbsent;
+            $entry->late_deduction = $lateDeduction;
+            $entry->total_deductions = max(
+                0,
+                (float) $entry->total_deductions
+                    + ($lateDeduction - $previousLateDeduction)
+                    + ($earlyOutDeduction - $previousEarlyOutDeduction)
+            );
+            $suspensionPay = $this->payrollComputationService->calculateSuspensionPay(
+                (float) ($serializedBreakdown['suspended_hours_to_pay'] ?? 0)
+            );
+            $entry->net_pay = (float) $entry->gross_pay - (float) $entry->total_deductions
+                + (float) ($serializedBreakdown['holiday_bonus'] ?? 0)
+                + $suspensionPay;
+            $serializedBreakdown['net_pay'] = number_format($entry->net_pay, 2, '.', '');
             $entry->payroll_breakdown = json_encode($serializedBreakdown);
             $entry->save();
 
@@ -481,27 +557,44 @@ class PayrollController extends Controller
         $entry = PayrollEntry::with(['employee', 'payrollPeriod', 'branch', 'dtr'])->findOrFail($entryId);
         $breakdown = $this->syncEntryFromCurrentDtr($entry);
         $dtr = $entry->dtr;
+        $workingDays = max(1, $dtr?->getWorkingDays() ?? ($entry->days_present + $entry->days_absent));
+        $dailyRate = isset($breakdown['daily_rate']) && is_numeric($breakdown['daily_rate'])
+            ? (float) $breakdown['daily_rate']
+            : (float) $entry->basic_pay / $workingDays;
+        $calendarStats = $this->calendarAttendanceDeductions($dtr, $dailyRate);
 
         $dtrStats = [
             'days_present' => $breakdown['days_present'] ?? 0,
+            'half_day_days' => $breakdown['half_day_days'] ?? 0,
             'days_absent' => $breakdown['days_absent'] ?? 0,
             'late_minutes' => $dtr ? $dtr->getTotalLateMinutes() : 0,
             'early_out_minutes' => $dtr ? $dtr->getTotalEarlyOutMinutes() : 0,
             'paid_leave' => $breakdown['paid_leave'] ?? 0,
             'leave_without_pay' => $breakdown['leave_without_pay'] ?? 0,
-        ];
+        ] + $calendarStats;
 
         if ($dtr) {
             $entry->days_present = $dtrStats['days_present'];
             $entry->days_absent = $dtrStats['days_absent'];
         }
 
-        $isReadOnly = $entry->payrollPeriod?->status !== 'draft'
-            && !($entry->correction_stage === 'fh_correction' && $this->isFinanceCorrectionOwner())
-            && !$this->isFinanceHead();
+        $cashAdvancesForPayroll = $this->eligibleCashAdvancesForEntry($entry);
+        $entry->cash_advance_deduction = $this->cashAdvanceDeductionForEntry($entry, $cashAdvancesForPayroll);
+        $cashCharge = $this->payrollComputationService->cashChargeDeductionForPayroll(
+            $entry->employee_profile_id,
+            $entry->payrollPeriod
+        );
+        $entry->cash_charge_id = $cashCharge['id'];
+        $entry->cash_charge_deduction = $cashCharge['amount'];
 
+        $canCorrectReturnedEntry = $entry->correction_stage === 'fh_correction' && $this->isFinanceCorrectionOwner();
         $isFinanceHead = $this->isFinanceHead();
-        return view('admin.payroll.edit-entry', compact('entry', 'dtrStats', 'isReadOnly', 'isFinanceHead'));
+        $isReadOnly = ($entry->status === 'approved' && !$canCorrectReturnedEntry && !$isFinanceHead)
+            || ($entry->payrollPeriod?->status !== 'draft'
+                && !$canCorrectReturnedEntry
+                && !$isFinanceHead);
+
+        return view('admin.payroll.edit-entry', compact('entry', 'dtrStats', 'isReadOnly', 'isFinanceHead', 'canCorrectReturnedEntry'));
     }
 
     // Update payroll entry with deductions and status
@@ -512,14 +605,22 @@ class PayrollController extends Controller
         $entry = PayrollEntry::with(['employee', 'payrollPeriod', 'branch', 'dtr'])->findOrFail($entryId);
         $canCorrectReturnedEntry = $entry->correction_stage === 'fh_correction' && $this->isFinanceCorrectionOwner();
         $isFinanceHead = $this->isFinanceHead();
-        if ($entry->payrollPeriod?->status !== 'draft' && !$canCorrectReturnedEntry && !$isFinanceHead) {
+        if (($entry->status === 'approved' || $entry->payrollPeriod?->status !== 'draft') && !$canCorrectReturnedEntry && !$isFinanceHead) {
             return redirect()->route('admin.payroll.entries', $entry->payroll_period_id)
                 ->with('error', 'Approved payroll entries are view-only. Return the payroll to Draft before editing.');
         }
         $dtrBreakdown = $this->syncEntryFromCurrentDtr($entry);
         $dtr = $entry->dtr;
+        $cashAdvancesForPayroll = $this->eligibleCashAdvancesForEntry($entry);
+        $cashAdvanceDeduction = $this->cashAdvanceDeductionForEntry($entry, $cashAdvancesForPayroll);
+        $cashCharge = $this->payrollComputationService->cashChargeDeductionForPayroll(
+            $entry->employee_profile_id,
+            $entry->payrollPeriod
+        );
+        $cashChargeDeduction = $cashCharge['amount'];
         $dtrStats = [
             'days_present' => $dtrBreakdown['days_present'] ?? 0,
+            'half_day_days' => $dtrBreakdown['half_day_days'] ?? 0,
             'days_absent' => $dtrBreakdown['days_absent'] ?? 0,
             'late_minutes' => $dtr ? $dtr->getTotalLateMinutes() : 0,
             'early_out_minutes' => $dtr ? $dtr->getTotalEarlyOutMinutes() : 0,
@@ -535,31 +636,35 @@ class PayrollController extends Controller
             'leave_without_pay' => 'nullable|integer|min:0',
             'late_minutes' => 'nullable|numeric|min:0',
             'daily_rate' => 'nullable|numeric|min:0',
-            'absent_deduction' => 'nullable|numeric|min:0',
             'early_out_deduction' => 'nullable|numeric|min:0',
-            'leave_without_pay_amount' => 'nullable|numeric|min:0',
             'sss_contribution' => 'required|numeric|min:0',
             'philhealth_contribution' => 'required|numeric|min:0',
             'pagibig_contribution' => 'required|numeric|min:0',
             'late_deduction' => 'nullable|numeric|min:0',
             'withholding_tax' => 'required|numeric|min:0',
             'cash_advance_deduction' => 'nullable|numeric|min:0',
+            'holiday_bonus' => 'nullable|numeric|min:0',
+            'suspended_hours_to_pay' => 'nullable|numeric|min:0|max:24',
             'status' => 'required|in:calculated,approved',
         ]);
 
-        $lateMinutes = (float) ($validated['late_minutes'] ?? ($dtrStats['late_minutes'] ?? 0));
+        $lateMinutes = (float) ($dtrStats['late_minutes'] ?? 0);
         $earlyOutMinutes = (float) ($dtrStats['early_out_minutes'] ?? 0);
-        $computedLateDeduction = $lateMinutes * 0.48;
-        $computedEarlyOutDeduction = 0;
+        $computedLateDeduction = $lateMinutes;
+        $computedEarlyOutDeduction = $earlyOutMinutes;
         $breakdown = is_string($entry->payroll_breakdown) ? json_decode($entry->payroll_breakdown, true) ?? [] : (array) $entry->payroll_breakdown;
+        $holidayBonus = $isFinanceHead && array_key_exists('holiday_bonus', $validated)
+            ? (float) $validated['holiday_bonus']
+            : (float) ($breakdown['holiday_bonus'] ?? 0);
+        $suspendedHoursToPay = $isFinanceHead && array_key_exists('suspended_hours_to_pay', $validated)
+            ? (float) $validated['suspended_hours_to_pay']
+            : (float) ($breakdown['suspended_hours_to_pay'] ?? 0);
         $workingDays = max(1, $dtr?->getWorkingDays() ?? 0);
         $canonicalDailyRate = $entry->basic_pay > 0 ? (float) $entry->basic_pay / $workingDays : 0;
-        $storedDailyRate = isset($breakdown['daily_rate']) && $entry->status === 'approved'
+        $storedDailyRate = isset($breakdown['daily_rate']) && is_numeric($breakdown['daily_rate'])
             ? (float) $breakdown['daily_rate']
             : $canonicalDailyRate;
-        $storedCashAdvance = (float) ($entry->cash_advance_deduction ?? 0) > 0
-            ? (float) $entry->cash_advance_deduction
-            : (float) ($breakdown['cash_advance_deduction'] ?? 0);
+        $storedCashAdvance = $cashAdvanceDeduction;
         $isApprovedEntry = $entry->status === 'approved' && $entry->payrollPeriod?->status === 'approved';
         if ($isApprovedEntry && $validated['status'] === 'approved') {
             $validated['daily_rate'] = $storedDailyRate;
@@ -573,14 +678,15 @@ class PayrollController extends Controller
             $validated['withholding_tax'] = $entry->withholding_tax;
             $validated['cash_advance_deduction'] = $storedCashAdvance;
         }
-        $dailyRate = $isFinanceHead && array_key_exists('daily_rate', $validated)
+        $dailyRate = array_key_exists('daily_rate', $validated)
             ? (float) $validated['daily_rate']
-            : ($validated['status'] === 'approved'
-            ? $storedDailyRate
-            : (float) ($validated['daily_rate'] ?? $storedDailyRate));
-        $computedEarlyOutDeduction = $dailyRate > 0
-            ? min($dailyRate, $dailyRate * ($earlyOutMinutes / (8 * 60)))
-            : 0;
+            : $storedDailyRate;
+        $calendarStats = $this->calendarAttendanceDeductions($dtr, $dailyRate);
+        $holidayDeduction = $calendarStats['holiday_deduction'];
+        $suspensionDeduction = $calendarStats['suspension_deduction'];
+        $halfDayCount = (int) ($dtrStats['half_day_days'] ?? 0);
+        $halfDayDeduction = $this->payrollComputationService->calculateHalfDayDeduction($halfDayCount, $dailyRate);
+        $suspensionPay = $this->payrollComputationService->calculateSuspensionPay($suspendedHoursToPay);
         // Attendance totals are always authoritative; do not reuse submitted or stale payroll values.
         $paidLeaveDays = (int) ($dtrStats['paid_leave'] ?? 0);
         $leaveWithoutPayDays = (int) ($dtrStats['leave_without_pay'] ?? 0);
@@ -590,21 +696,13 @@ class PayrollController extends Controller
         $entry->sss_contribution = $validated['sss_contribution'];
         $entry->philhealth_contribution = $validated['philhealth_contribution'];
         $entry->pagibig_contribution = $validated['pagibig_contribution'];
-        $entry->cash_advance_deduction = $validated['cash_advance_deduction'] ?? ($entry->cash_advance_deduction ?? 0);
-        $entry->late_deduction = $isFinanceHead && array_key_exists('late_deduction', $validated)
-            ? (float) $validated['late_deduction']
-            : (isset($validated['late_deduction']) && $validated['late_deduction'] !== '' ? (float) $validated['late_deduction'] : $computedLateDeduction);
-        $entry->absent_deduction = $isFinanceHead && array_key_exists('absent_deduction', $validated)
-            ? (float) $validated['absent_deduction']
-            : (float) $entry->days_absent * $dailyRate;
+        $entry->cash_advance_deduction = $cashAdvanceDeduction;
+        $entry->cash_charge_id = $cashCharge['id'];
+        $entry->cash_charge_deduction = $cashChargeDeduction;
+        $entry->late_deduction = $computedLateDeduction;
+        $entry->absent_deduction = (float) $entry->days_absent * $dailyRate;
         $entry->withholding_tax = $validated['withholding_tax'];
-        $validatedEarlyOutDeduction = $isFinanceHead && array_key_exists('early_out_deduction', $validated)
-            ? (float) $validated['early_out_deduction']
-            : $computedEarlyOutDeduction;
-        $leaveWithoutPayDeduction = $isFinanceHead && array_key_exists('leave_without_pay_amount', $validated)
-            ? (float) $validated['leave_without_pay_amount']
-            : $leaveWithoutPayDeduction;
-
+        $validatedEarlyOutDeduction = $computedEarlyOutDeduction;
         $entry->basic_pay = $isFinanceHead && array_key_exists('basic_pay', $validated)
             ? (float) $validated['basic_pay']
             : (float) ($entry->basic_pay ?: ($entry->employeeProfile?->basic_salary ?? 0));
@@ -615,16 +713,31 @@ class PayrollController extends Controller
         $breakdown['leave_without_pay'] = $leaveWithoutPayDays;
         $breakdown['late_minutes'] = $validated['late_minutes'] ?? ($breakdown['late_minutes'] ?? 0);
         $breakdown['cash_advance_deduction'] = $entry->cash_advance_deduction ?? 0;
+        $breakdown['cash_charge_id'] = $entry->cash_charge_id;
+        $breakdown['cash_charge_deduction'] = $cashChargeDeduction;
         $breakdown['daily_rate'] = $dailyRate;
         $breakdown['total_daily_rate'] = ($entry->days_present ?? 0) * $dailyRate;
+        $breakdown['half_day_days'] = $halfDayCount;
+        $breakdown['half_day_deduction'] = $halfDayDeduction;
+        $breakdown['suspended_hours_to_pay'] = $suspendedHoursToPay;
+        $breakdown['suspension_pay'] = $suspensionPay;
         $breakdown['early_out_deduction'] = $validatedEarlyOutDeduction;
+        $breakdown['absent_deduction'] = $entry->absent_deduction;
+        $breakdown['leave_without_pay_deduction'] = $leaveWithoutPayDeduction;
+        $breakdown['holiday_bonus'] = $holidayBonus;
+        $breakdown['holiday_deduction'] = $holidayDeduction;
+        $breakdown['suspension_deduction'] = $suspensionDeduction;
         $entry->payroll_breakdown = json_encode($breakdown);
 
         $entry->gross_pay = $entry->basic_pay + ($entry->overtime_pay ?? 0);
-        $entry->total_deductions = $entry->sss_contribution + $entry->philhealth_contribution + $entry->pagibig_contribution + $entry->withholding_tax + ($entry->cash_advance_deduction ?? 0) + $entry->late_deduction + $entry->absent_deduction + $leaveWithoutPayDeduction + $validatedEarlyOutDeduction;
-        $entry->net_pay = $entry->gross_pay - $entry->total_deductions;
+        $entry->total_deductions = $entry->sss_contribution + $entry->philhealth_contribution + $entry->pagibig_contribution + $entry->withholding_tax + ($entry->cash_advance_deduction ?? 0) + $cashChargeDeduction + $entry->late_deduction + $entry->absent_deduction + $leaveWithoutPayDeduction + $validatedEarlyOutDeduction + $halfDayDeduction + $holidayDeduction + $suspensionDeduction;
+        $entry->net_pay = $entry->gross_pay - $entry->total_deductions + $holidayBonus + $suspensionPay;
+        $breakdown['net_pay'] = number_format($entry->net_pay, 2, '.', '');
+        $entry->payroll_breakdown = json_encode($breakdown);
         $entry->status = $validated['status'];
         $entry->save();
+
+        $this->recordCashAdvanceInstallments($cashAdvancesForPayroll);
 
         if ($canCorrectReturnedEntry) {
             $entry->update([
@@ -632,6 +745,7 @@ class PayrollController extends Controller
                 'correction_reason' => null,
                 'correction_returned_by' => null,
                 'correction_returned_at' => null,
+                'payslip_published_at' => null,
                 'payslip_sent_at' => null,
                 'payslip_sent_to' => null,
             ]);
@@ -639,6 +753,118 @@ class PayrollController extends Controller
 
         return redirect()->route('admin.payroll.entries', $entry->payroll_period_id)
             ->with('success', 'Payroll entry updated successfully.');
+    }
+
+    private function calendarAttendanceDeductions($dtr, float $dailyRate): array
+    {
+        $stats = [
+            'total_holidays' => 0,
+            'total_suspensions' => 0,
+            'total_suspended_hours' => 0.0,
+            'total_suspended_overtime_hours' => 0.0,
+            'missed_holiday_days' => 0,
+            'missed_suspension_days' => 0,
+            'deductible_suspension_days' => 0,
+            'holiday_deduction' => 0.0,
+            'suspension_deduction' => 0.0,
+        ];
+
+        if (!$dtr) {
+            return $stats;
+        }
+
+        $workingDayService = app(\App\Services\WorkingDayService::class);
+        $branchId = $dtr->employeeProfile?->branch_id;
+        $logsByDate = $dtr->attendanceLogs()->keyBy(fn ($log) => $log->attendance_date->format('Y-m-d'));
+        $current = $dtr->period_start->copy();
+
+        while ($current <= $dtr->period_end) {
+            $date = $current->format('Y-m-d');
+            $log = $logsByDate->get($date);
+            $isSuspension = $workingDayService->isSuspension($current, $branchId);
+            $isHoliday = $workingDayService->isHoliday($current, $branchId);
+            $stats['total_holidays'] += $isHoliday ? 1 : 0;
+            $stats['total_suspensions'] += $isSuspension ? 1 : 0;
+
+            if ($isSuspension) {
+                $minutes = 0;
+                if ($log?->am_in && $log?->am_out) {
+                    $minutes += $log->am_in->diffInMinutes($log->am_out);
+                }
+                if ($log?->pm_in && $log?->pm_out) {
+                    $minutes += $log->pm_in->diffInMinutes($log->pm_out);
+                }
+                if (!$minutes && $log?->am_in && $log?->pm_out) {
+                    $minutes = $log->am_in->diffInMinutes($log->pm_out);
+                }
+                $stats['total_suspended_hours'] += $minutes / 60;
+                $stats['total_suspended_overtime_hours'] += (float) ($log?->overtime_hours ?? 0);
+                if ($current->lt(Carbon::today())) {
+                    $stats['deductible_suspension_days']++;
+                }
+            }
+
+            $hasAttendanceTime = (bool) ($log && ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out));
+            if ($current->lt(Carbon::today()) && !$hasAttendanceTime) {
+                if ($isSuspension) {
+                    $stats['missed_suspension_days']++;
+                } elseif ($isHoliday) {
+                    $stats['missed_holiday_days']++;
+                }
+            }
+
+            $current->addDay();
+        }
+
+        $stats['holiday_deduction'] = $stats['missed_holiday_days'] * $dailyRate;
+        $stats['suspension_deduction'] = $stats['deductible_suspension_days'] * $dailyRate;
+
+        return $stats;
+    }
+
+    private function eligibleCashAdvancesForEntry(PayrollEntry $entry)
+    {
+        $periodStart = $entry->payrollPeriod?->start_date ?? $entry->dtr?->period_start;
+        $periodEnd = $entry->payrollPeriod?->end_date ?? $entry->dtr?->period_end;
+        if (!$periodStart || !$periodEnd || !$entry->employee_profile_id) {
+            return collect();
+        }
+
+        return CashAdvanceApplication::eligibleForPayrollCutoff($entry->employee_profile_id, $periodStart, $periodEnd)
+            ->orderBy('fh_reviewed_at')
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    private function cashAdvanceDeductionForEntry(PayrollEntry $entry, $newInstallments): float
+    {
+        $breakdown = is_string($entry->payroll_breakdown)
+            ? json_decode($entry->payroll_breakdown, true) ?? []
+            : (array) ($entry->payroll_breakdown ?? []);
+        $existingDeduction = (float) ($entry->cash_advance_deduction ?? 0);
+        if ($existingDeduction <= 0) {
+            $existingDeduction = (float) ($breakdown['cash_advance_deduction'] ?? 0);
+        }
+
+        if ($newInstallments->isNotEmpty()) {
+            return (float) $newInstallments->sum(fn ($cashAdvance) =>
+                (float) ($cashAdvance->approved_amount ?: $cashAdvance->requested_amount)
+            );
+        }
+
+        return $existingDeduction;
+    }
+
+    private function recordCashAdvanceInstallments($cashAdvances): void
+    {
+        foreach ($cashAdvances as $cashAdvance) {
+            $cashAdvance->update([
+                'deducted_installments' => (int) $cashAdvance->installments,
+                'status' => 'completed',
+                'deduction_started_at' => $cashAdvance->deduction_started_at ?: now(),
+                'completed_at' => now(),
+            ]);
+        }
     }
 
     public function returnPeriodToBranchHead(Request $request, $periodId)
@@ -769,6 +995,7 @@ class PayrollController extends Controller
             'correction_reason' => $reason,
             'correction_returned_by' => Auth::id(),
             'correction_returned_at' => now(),
+            'payslip_published_at' => null,
             'payslip_sent_at' => null,
             'payslip_sent_to' => null,
         ]);
@@ -781,6 +1008,7 @@ class PayrollController extends Controller
             'correction_reason' => $reason,
             'correction_returned_by' => Auth::id(),
             'correction_returned_at' => now(),
+            'payslip_published_at' => null,
             'payslip_sent_at' => null,
             'payslip_sent_to' => null,
         ]);
@@ -1018,7 +1246,10 @@ class PayrollController extends Controller
                 $query->where('user_id', $user->id);
             })
             ->whereIn('status', ['calculated', 'approved'])
-            ->whereNotNull('payslip_sent_at')
+            ->where(function ($query) {
+                $query->whereNotNull('payslip_published_at')
+                    ->orWhereNotNull('payslip_sent_at');
+            })
             ->orderBy('created_at', 'desc')
             ->paginate(10);
         

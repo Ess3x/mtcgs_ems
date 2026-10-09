@@ -10,7 +10,9 @@ use App\Models\EmployeeProfile;
 use App\Models\FinanceProfile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class LeaveCreditManagementTest extends TestCase
@@ -77,7 +79,7 @@ class LeaveCreditManagementTest extends TestCase
             'maternity_leave_total' => '0',
             'paternity_leave_total' => '0',
             'birthday_leave_total' => '1',
-            'cash_charge_total' => '2',
+            'service_incentive_leave_total' => '5',
         ]);
 
         $response->assertRedirect();
@@ -88,7 +90,6 @@ class LeaveCreditManagementTest extends TestCase
             'vacation_leave_total' => '10.0',
             'emergency_leave_total' => '5.0',
             'birthday_leave_total' => '1.0',
-            'cash_charge_total' => '2.0',
         ]);
 
         $balance = app(\App\Http\Controllers\LeaveController::class)->refreshLeaveBalanceForProfile($profile);
@@ -96,7 +97,7 @@ class LeaveCreditManagementTest extends TestCase
         $this->assertSame(10.0, (float) $balance->vacation_leave_total);
         $this->assertSame(5.0, (float) $balance->emergency_leave_total);
         $this->assertSame(1.0, (float) $balance->birthday_leave_total);
-        $this->assertSame(2.0, (float) $balance->cash_charge_total);
+        $this->assertSame(0.0, (float) $balance->cash_charge_total);
     }
 
     public function test_leave_credit_update_sends_email_and_user_notification(): void
@@ -154,7 +155,7 @@ class LeaveCreditManagementTest extends TestCase
             'maternity_leave_total' => '0',
             'paternity_leave_total' => '0',
             'birthday_leave_total' => '1',
-            'cash_charge_total' => '2',
+            'service_incentive_leave_total' => '5',
         ]);
 
         Mail::assertSent(LeaveCreditsUpdated::class, function ($mail) use ($profile) {
@@ -168,7 +169,7 @@ class LeaveCreditManagementTest extends TestCase
         ]);
     }
 
-    public function test_leave_credits_form_includes_cash_charge_total_for_submission(): void
+    public function test_leave_credits_form_does_not_include_cash_charge_total(): void
     {
         $branch = Branch::create([
             'branch_code' => 'BR-100',
@@ -217,7 +218,7 @@ class LeaveCreditManagementTest extends TestCase
         $response = $this->actingAs($superAdmin)->get(route('admin.leave-credits.index'));
 
         $response->assertOk();
-        $response->assertSee('name="cash_charge_total"', false);
+        $response->assertDontSee('name="cash_charge_total"', false);
     }
 
     public function test_branch_admin_can_access_cash_charges_management(): void
@@ -273,6 +274,82 @@ class LeaveCreditManagementTest extends TestCase
         $response->assertDontSeeText('Active Users');
     }
 
+    public function test_super_admin_cash_charge_skips_branch_admin_review(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-SA-CHARGE',
+            'branch_name' => 'Super Admin Charge Branch',
+            'address' => 'Charge Test Address',
+        ]);
+
+        $superAdmin = User::create([
+            'name' => 'Charge Super Admin',
+            'email' => 'charge-super-admin@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'admin_type' => 'super_admin',
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+
+        $employee = User::create([
+            'name' => 'Charge Employee',
+            'email' => 'charge-employee@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'employee',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+
+        $profile = EmployeeProfile::create([
+            'user_id' => $employee->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'EMP-SA-CHARGE',
+            'first_name' => 'Charge',
+            'last_name' => 'Employee',
+            'position' => 'Staff',
+            'date_hired' => '2024-01-15',
+            'status' => 'Regular',
+        ]);
+
+        Storage::fake('local');
+
+        $this->actingAs($superAdmin)
+            ->post(route('admin.cash-charges.store'), [
+                'employee_id' => $profile->id,
+                'amount' => 1200,
+                'reason' => 'Approved by Super Admin',
+                'evidence' => UploadedFile::fake()->image('cash-charge.png'),
+            ])
+            ->assertRedirect();
+
+        $charge = CashCharge::where('employee_profile_id', $profile->id)->firstOrFail();
+
+        $this->assertDatabaseHas('cash_charges', [
+            'employee_profile_id' => $profile->id,
+            'requested_by' => $superAdmin->id,
+            'status' => 'pending_super_admin',
+            'evidence_path' => $charge->evidence_path,
+        ]);
+        $this->assertNotEmpty($charge->evidence_path);
+        Storage::disk('local')->assertExists($charge->evidence_path);
+
+        $this->actingAs($superAdmin)
+            ->get(route('admin.cash-charges.index'))
+            ->assertOk()
+            ->assertSeeText('Evidence')
+            ->assertSeeText('View')
+            ->assertSee('aria-label="View evidence image"', false)
+            ->assertSee('fa-eye');
+
+        $this->get(route('admin.cash-charges.evidence', $charge))
+            ->assertOk()
+            ->assertHeader('content-type', 'image/png');
+    }
+
     public function test_employee_can_view_their_own_my_charges(): void
     {
         $branch = Branch::create([
@@ -307,6 +384,9 @@ class LeaveCreditManagementTest extends TestCase
         $employeeUser->profile_id = $profile->id;
         $employeeUser->save();
 
+        Storage::fake('local');
+        $evidencePath = UploadedFile::fake()->image('approved-charge.png')->store('cash-charge-evidence', 'local');
+
         $charge = \App\Models\CashCharge::create([
             'employee_profile_id' => $profile->id,
             'branch_id' => $branch->id,
@@ -314,6 +394,17 @@ class LeaveCreditManagementTest extends TestCase
             'reason' => 'Emergency cash assistance',
             'requested_by' => $employeeUser->id,
             'status' => 'pending',
+        ]);
+
+        $approvedCharge = CashCharge::create([
+            'employee_profile_id' => $profile->id,
+            'branch_id' => $branch->id,
+            'amount' => 1000,
+            'installment_per_cutoff' => 500,
+            'reason' => 'Approved keyboard replacement',
+            'evidence_path' => $evidencePath,
+            'requested_by' => $employeeUser->id,
+            'status' => 'approved',
         ]);
 
         $response = $this->actingAs($employeeUser)->get(route('admin.cash-charges.index'));
@@ -325,9 +416,17 @@ class LeaveCreditManagementTest extends TestCase
         $response->assertSeeText('Installment Amount');
         $response->assertSee('₱1,250.00');
         $response->assertSeeText('Emergency cash assistance');
+        $response->assertSeeText('Approved by Super Admin');
+        $response->assertSeeText('Approved keyboard replacement');
+        $response->assertSee('fa-eye');
+        $this->assertSame(2, substr_count($response->getContent(), route('admin.cash-charges.evidence', $approvedCharge)));
         $response->assertDontSeeText('Active Users');
         $response->assertDontSeeText('Cash Charge Requests');
         $this->assertDatabaseHas('cash_charges', ['id' => $charge->id, 'requested_by' => $employeeUser->id]);
+
+        $this->get(route('admin.cash-charges.evidence', $approvedCharge))
+            ->assertOk()
+            ->assertHeader('content-type', 'image/png');
     }
 
     public function test_pending_cash_charge_request_reverts_to_last_approved_total(): void
@@ -543,7 +642,8 @@ class LeaveCreditManagementTest extends TestCase
 
         $response->assertOk();
         $response->assertSeeText('Applied by Branch Admin');
-        $response->assertDontSeeText('Approved by Super Admin');
+        $response->assertSeeText('Approved by Super Admin');
+        $response->assertSeeText('Approved by super admin');
     }
 
     public function test_cash_charge_total_stays_fixed_while_installment_field_can_change(): void
@@ -606,6 +706,89 @@ class LeaveCreditManagementTest extends TestCase
             'amount' => '3000.00',
             'installment_per_cutoff' => '2000.00',
         ]);
+    }
+
+    public function test_cash_charge_balance_decreases_only_for_fully_approved_payroll_installments(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-CHARGE-APPROVAL',
+            'branch_name' => 'Charge Approval Branch',
+            'address' => 'Charge Approval Address',
+        ]);
+        $employeeUser = User::create([
+            'name' => 'Charge Balance Employee',
+            'email' => 'charge-balance@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'employee',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $profile = EmployeeProfile::create([
+            'user_id' => $employeeUser->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'EMP-CHARGE-APPROVAL',
+            'first_name' => 'Charge Balance',
+            'last_name' => 'Employee',
+            'position' => 'Staff',
+            'date_hired' => '2024-01-15',
+        ]);
+        $charge = CashCharge::create([
+            'employee_profile_id' => $profile->id,
+            'branch_id' => $branch->id,
+            'amount' => 1000,
+            'installment_per_cutoff' => 100,
+            'reason' => 'Approved cash charge',
+            'requested_by' => $employeeUser->id,
+            'approved_by' => $employeeUser->id,
+            'approved_at' => now(),
+            'status' => 'approved',
+        ]);
+        $period = \App\Models\PayrollPeriod::create([
+            'branch_id' => $branch->id,
+            'period_code' => 'CHARGE-FINAL-APPROVAL',
+            'start_date' => now()->startOfMonth(),
+            'end_date' => now()->endOfMonth(),
+            'payment_date' => now()->endOfMonth(),
+            'status' => 'completed',
+            'approved_at' => now(),
+            'hr_approved_at' => now(),
+            'branch_approved_at' => now(),
+            'admin_approval_stage' => 'bh_approved',
+            'finance_submitted_at' => now(),
+        ]);
+        \App\Models\PayrollEntry::create([
+            'payroll_period_id' => $period->id,
+            'employee_profile_id' => $profile->id,
+            'branch_id' => $branch->id,
+            'cash_charge_id' => $charge->id,
+            'cash_charge_deduction' => 100,
+            'status' => 'approved',
+        ]);
+        $draftPeriod = \App\Models\PayrollPeriod::create([
+            'branch_id' => $branch->id,
+            'period_code' => 'CHARGE-DRAFT-APPROVAL',
+            'start_date' => now()->startOfMonth()->subMonth(),
+            'end_date' => now()->endOfMonth()->subMonth(),
+            'payment_date' => now()->endOfMonth()->subMonth(),
+            'status' => 'draft',
+        ]);
+        \App\Models\PayrollEntry::create([
+            'payroll_period_id' => $draftPeriod->id,
+            'employee_profile_id' => $profile->id,
+            'branch_id' => $branch->id,
+            'cash_charge_id' => $charge->id,
+            'cash_charge_deduction' => 100,
+            'status' => 'approved',
+        ]);
+
+        $response = $this->actingAs($employeeUser)->get(route('admin.cash-charges.index'));
+
+        $response->assertOk();
+        $response->assertSee('value="900.00"', false);
+        $response->assertSee('value="100.00"', false);
+        $this->assertSame(1000.0, (float) $charge->fresh()->amount);
     }
 
     public function test_save_persists_edited_installment_value_for_pending_request(): void

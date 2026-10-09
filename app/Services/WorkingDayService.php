@@ -27,6 +27,29 @@ class WorkingDayService
         }
 
         return CalendarEvent::holidays()
+            ->approved()
+            ->whereDate('event_date', $day->toDateString())
+            ->where(function ($query) use ($branchId) {
+                $query->whereNull('branch_id');
+                if ($branchId !== null) {
+                    $query->orWhere('branch_id', $branchId);
+                }
+            })
+            ->exists();
+    }
+
+    public function isSuspension(Carbon|string $date, ?int $branchId = null): bool
+    {
+        $day = $date instanceof Carbon
+            ? $date->copy()->timezone(config('app.timezone'))
+            : Carbon::parse($date, config('app.timezone'));
+
+        if (!Schema::hasTable('calendar_events')) {
+            return false;
+        }
+
+        return CalendarEvent::suspensions()
+            ->approved()
             ->whereDate('event_date', $day->toDateString())
             ->where(function ($query) use ($branchId) {
                 $query->whereNull('branch_id');
@@ -41,7 +64,9 @@ class WorkingDayService
     {
         $day = $date instanceof Carbon ? $date : Carbon::parse($date, config('app.timezone'));
 
-        return !$day->isWeekend() && !$this->isHoliday($day, $branchId);
+        return !$day->isWeekend()
+            && !$this->isHoliday($day, $branchId)
+            && !$this->isSuspension($day, $branchId);
     }
 
     public function countWorkingDays(Carbon|string $start, Carbon|string $end, ?int $branchId = null): int

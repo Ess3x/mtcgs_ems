@@ -11,8 +11,14 @@ use Illuminate\Support\Facades\Auth;
 
 class CalendarController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $filters = $request->validate([
+            'period' => 'nullable|in:yearly,monthly',
+            'year' => 'exclude_unless:period,yearly,monthly|required|integer|between:2026,2100',
+            'month' => 'exclude_unless:period,monthly|required|integer|between:1,12',
+        ]);
+
         $user = Auth::user();
         $events = collect();
 
@@ -25,6 +31,13 @@ class CalendarController extends Controller
                     ->where(function($query) use ($branchId) {
                         $query->where('branch_id', $branchId)
                               ->orWhereNull('branch_id');
+                    })
+                    ->where(function ($query) use ($user) {
+                        $query->where('approval_status', 'approved')
+                            ->orWhere(function ($pending) use ($user) {
+                                $pending->where('approval_status', 'pending')
+                                    ->where('created_by', $user->id);
+                            });
                     })
                     ->orderBy('event_date', 'desc')
                     ->get();
@@ -41,6 +54,7 @@ class CalendarController extends Controller
                         $query->where('branch_id', $financeProfile->branch_id)
                               ->orWhereNull('branch_id');
                     })
+                    ->where('approval_status', 'approved')
                     ->orderBy('event_date', 'desc')
                     ->get();
             }
@@ -52,12 +66,24 @@ class CalendarController extends Controller
                         $query->where('branch_id', $employeeProfile->branch_id)
                               ->orWhereNull('branch_id');
                     })
+                    ->where('approval_status', 'approved')
                     ->orderBy('event_date', 'desc')
                     ->get();
             }
         }
 
         $events = $this->appendConfiguredHolidays($events);
+
+        if (($filters['period'] ?? null) === 'yearly') {
+            $events = $events->filter(fn ($event) => $event->event_date->year === (int) $filters['year']);
+        } elseif (($filters['period'] ?? null) === 'monthly') {
+            $events = $events->filter(fn ($event) =>
+                $event->event_date->year === (int) $filters['year']
+                && $event->event_date->month === (int) $filters['month']
+            );
+        }
+
+        $events = $events->values();
 
         return view('calendar.index', compact('events'));
     }
@@ -86,9 +112,14 @@ class CalendarController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'event_date' => 'required|date|after_or_equal:today',
-            'event_type' => 'required|in:activity,holiday',
+            'event_type' => 'required|in:activity,holiday,suspension',
             'branch_id' => 'nullable|exists:branches,id'
         ]);
+
+        $requiresApproval = !$isSuperAdmin
+            && $user->role === 'admin'
+            && $user->admin_type === 'branch_admin'
+            && in_array($request->event_type, ['holiday', 'suspension'], true);
 
         CalendarEvent::create([
             'title' => $request->title,
@@ -96,7 +127,10 @@ class CalendarController extends Controller
             'event_date' => $request->event_date,
             'event_type' => $request->event_type,
             'created_by' => Auth::id(),
-            'branch_id' => $request->branch_id
+            'branch_id' => $request->branch_id,
+            'approval_status' => $requiresApproval ? 'pending' : 'approved',
+            'approved_by' => $requiresApproval ? null : Auth::id(),
+            'approved_at' => $requiresApproval ? null : now(),
         ]);
 
         return redirect()->route('calendar.index')->with('success', 'Calendar event created successfully.');
@@ -127,16 +161,21 @@ class CalendarController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'event_date' => 'required|date|after_or_equal:today',
-            'event_type' => 'required|in:activity,holiday',
+            'event_type' => 'required|in:activity,holiday,suspension',
             'branch_id' => 'nullable|exists:branches,id'
         ]);
+
+        $requiresApproval = in_array($request->event_type, ['holiday', 'suspension'], true) && !$isSuperAdmin;
 
         $calendar->update([
             'title' => $request->title,
             'description' => $request->description,
             'event_date' => $request->event_date,
             'event_type' => $request->event_type,
-            'branch_id' => $request->branch_id
+            'branch_id' => $request->branch_id,
+            'approval_status' => $requiresApproval ? 'pending' : ($calendar->approval_status === 'pending' ? 'approved' : $calendar->approval_status),
+            'approved_by' => $requiresApproval ? null : ($calendar->approval_status === 'pending' ? Auth::id() : $calendar->approved_by),
+            'approved_at' => $requiresApproval ? null : ($calendar->approval_status === 'pending' ? now() : $calendar->approved_at),
         ]);
 
         return redirect()->route('calendar.index')->with('success', 'Calendar event updated successfully.');
@@ -147,6 +186,23 @@ class CalendarController extends Controller
         $this->authorize('delete', $calendar);
         $calendar->delete();
         return redirect()->route('calendar.index')->with('success', 'Calendar event deleted successfully.');
+    }
+
+    public function approve(CalendarEvent $calendar)
+    {
+        abort_unless(Auth::user()->isSuperAdmin(), 403);
+
+        if (!in_array($calendar->event_type, ['holiday', 'suspension'], true) || $calendar->approval_status !== 'pending') {
+            return redirect()->route('calendar.index')->with('error', 'Only pending holiday or suspension requests can be approved.');
+        }
+
+        $calendar->update([
+            'approval_status' => 'approved',
+            'approved_by' => Auth::id(),
+            'approved_at' => now(),
+        ]);
+
+        return redirect()->route('calendar.index')->with('success', 'Calendar event approved successfully.');
     }
 
     public function calendar()
@@ -161,7 +217,8 @@ class CalendarController extends Controller
                 $adminProfile = $user->getAdminProfile();
                 $branchId = $adminProfile->branch_id ?? null;
 
-                $events = CalendarEvent::where(function($query) use ($branchId) {
+                $events = CalendarEvent::where('approval_status', 'approved')
+                    ->where(function($query) use ($branchId) {
                     $query->where('branch_id', $branchId)
                           ->orWhereNull('branch_id');
                 })->get();
@@ -172,7 +229,7 @@ class CalendarController extends Controller
                         $query->where('branch_id', $branchId);
                     })->orderBy('start_date')->get();
             } else {
-                $events = CalendarEvent::all();
+                $events = CalendarEvent::where('approval_status', 'approved')->get();
                 $leaveRequests = LeaveRequest::with('employeeProfile')
                     ->where('status', 'approved')
                     ->orderBy('start_date')
@@ -181,7 +238,7 @@ class CalendarController extends Controller
         } elseif ($user->role === 'finance_head') {
             $financeProfile = $user->getFinanceProfile();
             if ($financeProfile) {
-                $events = CalendarEvent::where(function($query) use ($financeProfile) {
+                $events = CalendarEvent::where('approval_status', 'approved')->where(function($query) use ($financeProfile) {
                     $query->whereNull('branch_id');
                     if ($financeProfile->branch_id) {
                         $query->orWhere('branch_id', $financeProfile->branch_id);
@@ -208,7 +265,7 @@ class CalendarController extends Controller
             $employeeProfile = $user->getEmployeeProfile();
             $currentUserProfileId = $employeeProfile->id;
             if ($employeeProfile && $employeeProfile->branch_id) {
-                $events = CalendarEvent::where(function($query) use ($employeeProfile) {
+                $events = CalendarEvent::where('approval_status', 'approved')->where(function($query) use ($employeeProfile) {
                     $query->where('branch_id', $employeeProfile->branch_id)
                           ->orWhereNull('branch_id');
                 })->get();
@@ -232,6 +289,7 @@ class CalendarController extends Controller
         $events = collect($events);
         $years = [Carbon::now(config('app.timezone'))->year, Carbon::now(config('app.timezone'))->addYear()->year];
         $existingDates = $events->where('event_type', 'holiday')
+            ->where('approval_status', 'approved')
             ->map(fn ($event) => $event->event_date->toDateString())
             ->all();
 

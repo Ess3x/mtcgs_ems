@@ -13,7 +13,8 @@ class LeaveBalance extends Model
         'birthday_leave_total', 'birthday_leave_used',
         'cash_charge_total', 'cash_charge_used',
         'maternity_leave_total', 'maternity_leave_used',
-        'paternity_leave_total', 'paternity_leave_used'
+        'paternity_leave_total', 'paternity_leave_used',
+        'service_incentive_leave_total', 'service_incentive_leave_used'
     ];
     
     protected $casts = [
@@ -31,6 +32,8 @@ class LeaveBalance extends Model
         'maternity_leave_used' => 'decimal:1',
         'paternity_leave_total' => 'decimal:1',
         'paternity_leave_used' => 'decimal:1',
+        'service_incentive_leave_total' => 'decimal:1',
+        'service_incentive_leave_used' => 'decimal:1',
     ];
     
     public function employeeProfile()
@@ -71,5 +74,10 @@ class LeaveBalance extends Model
     public function getAvailablePaternityLeave()
     {
         return $this->paternity_leave_total - $this->paternity_leave_used;
+    }
+
+    public function getAvailableServiceIncentiveLeave()
+    {
+        return $this->service_incentive_leave_total - $this->service_incentive_leave_used;
     }
 }

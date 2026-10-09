@@ -15,6 +15,11 @@ class CashAdvanceController extends Controller
     {
         $user = Auth::user();
         $scope = request()->query('scope');
+        $isApplicantView = $user->role === 'employee'
+            || ($scope === 'my' && ($user->role === 'finance_officer'
+                || ($user->role === 'admin' && ($user->admin_type ?? '') === 'branch_admin')));
+        abort_unless(!$isApplicantView || $user->canApplyForCashAdvance(), 403, 'Cash advance is only available to eligible employees.');
+
         $query = CashAdvanceApplication::with('employeeProfile')->latest();
 
         if ($user->role === 'employee'
@@ -103,6 +108,7 @@ class CashAdvanceController extends Controller
                 ? $user->getFinanceProfile()?->employeeProfile
                 : $user->getAdminProfile()?->employeeProfile);
         abort_unless($profile, 403);
+        abort_unless($isBranchAdminApplicant || $user->canApplyForCashAdvance(), 403, 'Cash advance is only available to eligible employees.');
 
         $validated = $request->validate([
             'requested_amount' => 'required|numeric|min:1|max:1000',

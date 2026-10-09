@@ -2,6 +2,16 @@
 
 @section('content')
 <style>
+    .leave-start-date {
+        color: #65a30d;
+        font-weight: 700;
+    }
+
+    .leave-end-date {
+        color: #c026d3;
+        font-weight: 700;
+    }
+
     .leave-action-btn {
         width: 150px;
         box-sizing: border-box;
@@ -10,6 +20,18 @@
         justify-content: center;
         gap: 0.25rem;
         white-space: nowrap;
+    }
+
+    body.dark-mode .leave-requests-table tbody tr,
+    body.dark-mode .leave-requests-table tbody td {
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+        color: #f8fafc !important;
+    }
+
+    body.dark-mode .leave-requests-table.table-hover tbody tr:hover,
+    body.dark-mode .leave-requests-table.table-hover tbody tr:hover td {
+        background-color: #273449 !important;
     }
 </style>
 
@@ -37,7 +59,7 @@
 
 <div class="card">
     <div class="table-responsive">
-        <table class="table table-hover">
+        <table class="table table-hover leave-requests-table">
             <thead class="table-light">
                 <tr>
                     <th>Employee ID</th>
@@ -58,7 +80,7 @@
                         <td>{{ optional($leave->employeeProfile)->full_name ?? 'N/A' }}</td>
                         <td>{{ optional($leave->employeeProfile)->position ?? 'N/A' }}</td>
                         <td>{{ ucfirst($leave->leave_type) }}</td>
-                        <td>{{ $leave->start_date }} to {{ $leave->end_date }}</td>
+                        <td><span class="leave-start-date">{{ $leave->start_date }}</span> to <span class="leave-end-date">{{ $leave->end_date }}</span></td>
                         <td>{{ $leave->total_days }}</td>
                         <td>{{ $leave->reason }}</td>
                         <td>

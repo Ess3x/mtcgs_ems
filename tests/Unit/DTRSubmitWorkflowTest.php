@@ -228,6 +228,38 @@ class DTRSubmitWorkflowTest extends TestCase
         $this->assertSame(229.89, round(10000.0 / 43.5, 2));
     }
 
+    public function test_half_day_and_suspension_pay_rules(): void
+    {
+        $service = new PayrollComputationService();
+
+        $this->assertSame(500.0, $service->calculateHalfDayDeduction(2, 500.0));
+        $this->assertSame(60.0, $service->calculateSuspensionPay(1.0));
+        $this->assertSame(75.0, $service->calculateSuspensionPay(1.25));
+    }
+
+    public function test_dtr_breakdown_counts_half_day_attendance(): void
+    {
+        $dtr = DTR::create([
+            'employee_profile_id' => 1,
+            'period_start' => '2026-08-17',
+            'period_end' => '2026-08-17',
+            'status' => 'draft',
+        ]);
+
+        AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-17',
+            'am_in' => '2026-08-17 08:00:00',
+            'pm_out' => '2026-08-17 09:30:00',
+            'status' => 'present',
+        ]);
+
+        $breakdown = $dtr->getCalculationBreakdown();
+
+        $this->assertSame(1, $breakdown['days_present']);
+        $this->assertSame(1, $breakdown['half_day_days']);
+    }
+
     public function test_calculate_totals_counts_approved_leave_and_absent_days_correctly(): void
     {
         $dtr = DTR::create([
@@ -388,7 +420,24 @@ class DTRSubmitWorkflowTest extends TestCase
         $onTime = AttendanceLog::create([
             'employee_profile_id' => 1,
             'attendance_date' => '2026-08-18',
-            'am_in' => '2026-08-18 07:00:00',
+            'am_in' => '2026-08-18 08:00:00',
+            'pm_in' => '2026-08-18 13:00:00',
+            'pm_out' => '2026-08-18 17:00:00',
+            'status' => 'present',
+        ]);
+        $oneMinuteLate = AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-18',
+            'am_in' => '2026-08-18 08:01:00',
+            'pm_in' => '2026-08-18 13:00:00',
+            'pm_out' => '2026-08-18 17:00:00',
+            'status' => 'late',
+            'late_minutes' => 1,
+        ]);
+        $afterGracePeriod = AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-18',
+            'am_in' => '2026-08-18 08:01:01',
             'pm_in' => '2026-08-18 13:00:00',
             'pm_out' => '2026-08-18 17:00:00',
             'status' => 'present',
@@ -396,7 +445,7 @@ class DTRSubmitWorkflowTest extends TestCase
         $late = AttendanceLog::create([
             'employee_profile_id' => 1,
             'attendance_date' => '2026-08-19',
-            'am_in' => '2026-08-19 07:01:00',
+            'am_in' => '2026-08-19 08:02:00',
             'pm_in' => '2026-08-19 13:00:00',
             'pm_out' => '2026-08-19 17:00:00',
             'status' => 'late',
@@ -405,7 +454,7 @@ class DTRSubmitWorkflowTest extends TestCase
         $earlyOut = AttendanceLog::create([
             'employee_profile_id' => 1,
             'attendance_date' => '2026-08-20',
-            'am_in' => '2026-08-20 07:00:00',
+            'am_in' => '2026-08-20 08:00:00',
             'pm_in' => '2026-08-20 13:00:00',
             'pm_out' => '2026-08-20 16:00:00',
             'status' => 'present',
@@ -413,14 +462,42 @@ class DTRSubmitWorkflowTest extends TestCase
         $halfDay = AttendanceLog::create([
             'employee_profile_id' => 1,
             'attendance_date' => '2026-08-21',
-            'am_in' => '2026-08-21 07:00:00',
+            'am_in' => '2026-08-21 08:00:00',
+            'status' => 'present',
+        ]);
+        $shortShift = AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-23',
+            'am_in' => '2026-08-23 08:00:00',
+            'pm_out' => '2026-08-23 09:30:00',
+            'status' => 'present',
+        ]);
+        $fullShift = AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-24',
+            'am_in' => '2026-08-24 08:00:00',
+            'pm_out' => '2026-08-24 17:00:00',
+            'status' => 'present',
+        ]);
+        $afternoonHalfDay = AttendanceLog::create([
+            'employee_profile_id' => 1,
+            'attendance_date' => '2026-08-25',
+            'pm_in' => '2026-08-25 13:00:00',
+            'pm_out' => '2026-08-25 17:00:00',
             'status' => 'present',
         ]);
 
         $this->assertSame('Present', $onTime->getDtrStatus());
+        $this->assertSame('Late', $oneMinuteLate->getDtrStatus());
+        $this->assertSame(1, DTR::normalizeLateMinutesForLog($oneMinuteLate));
+        $this->assertSame('Late', $afterGracePeriod->getDtrStatus());
         $this->assertSame('Late', $late->getDtrStatus());
+        $this->assertSame(2, DTR::normalizeLateMinutesForLog($late));
         $this->assertSame('Early Out', $earlyOut->getDtrStatus());
         $this->assertSame('Half Day', $halfDay->getDtrStatus());
+        $this->assertSame('Half Day', $shortShift->getDtrStatus());
+        $this->assertSame('Present', $fullShift->getDtrStatus());
+        $this->assertSame('Half Day', $afternoonHalfDay->getDtrStatus());
     }
 
     public function test_empty_attendance_log_stays_pending(): void
