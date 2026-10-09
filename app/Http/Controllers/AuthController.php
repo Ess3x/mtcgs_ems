@@ -7,11 +7,13 @@ use App\Models\EmployeeProfile;
 use App\Models\FinanceProfile;
 use App\Models\AdminProfile;
 use App\Models\Branch;
+use App\Models\LoginHistory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
@@ -97,22 +99,35 @@ class AuthController extends Controller
             'email' => 'required|email',
             'password' => 'required',
         ]);
+
+        $throttleKey = $this->loginThrottleKey($request);
+        $lockoutKey = $throttleKey . ':lockout';
+        if (RateLimiter::tooManyAttempts($lockoutKey, 1)) {
+            return $this->loginLockoutResponse($request, RateLimiter::availableIn($lockoutKey));
+        }
         
         $user = User::where('email', $request->email)->first();
         
         // Check if account exists
         if (!$user) {
+            $this->recordLoginHistory($request, null, 'failed', 'Unknown email');
+            if ($this->recordFailedLoginAttempt($throttleKey, $lockoutKey)) {
+                return $this->loginLockoutResponse($request, RateLimiter::availableIn($lockoutKey));
+            }
             return back()->withErrors(['email' => 'Invalid credentials']);
         }
         
         // Check verification status
         if ($user->id_verification_status !== 'approved') {
+            $this->recordLoginHistory($request, $user, 'failed', 'Account not approved');
             return back()->withErrors([
                 'email' => 'Your account is pending verification. Please wait for admin approval.'
             ]);
         }
         
         if (Auth::attempt(['email' => $request->email, 'password' => $request->password])) {
+            RateLimiter::clear($throttleKey);
+            RateLimiter::clear($lockoutKey);
             $user = Auth::user();
             
             // Determine branch based on role and profile
@@ -149,38 +164,93 @@ class AuthController extends Controller
                     }
                 } else {
                     $adminProfile = $user->getAdminProfile();
-                    if ($adminProfile && $adminProfile->branch) {
+                    $isBranchScopedAdmin = in_array($user->admin_type ?? '', ['branch_admin'], true);
+                    $isGlobalAdmin = in_array($user->admin_type ?? '', ['super_admin', 'hr'], true) || empty($user->admin_type);
+
+                    if ($adminProfile && $adminProfile->branch && $isBranchScopedAdmin) {
                         $branchId = $adminProfile->branch_id;
                         $branchCode = $adminProfile->branch->branch_code;
-                    } else {
+                    } elseif ($isBranchScopedAdmin) {
                         $branchId = $user->getEffectiveBranchId();
                         $branchCode = $branchId ? Branch::find($branchId)?->branch_code : null;
-                        if (!$branchId) {
-                            $branchCode = 'MTC-IRIGA';
-                            $branch = Branch::where('branch_code', $branchCode)->first();
-                            $branchId = $branch->id ?? 1;
-                        }
+                    } else {
+                        $branchId = null;
+                        $branchCode = null;
                     }
                 }
             }
             
-            // Store branch info in session
+            // Store branch info in session only for branch-scoped users.
             session(['user_branch' => $branchCode, 'user_branch_code' => $branchCode]);
             session(['branch_id' => $branchId]);
             
             $request->session()->regenerate();
+            $user->forceFill(['last_login_at' => now()])->saveQuietly();
+            $this->recordLoginHistory($request, $user, 'success');
             return redirect()->intended('/dashboard');
         }
         
+        $this->recordLoginHistory($request, $user, 'failed', 'Invalid credentials');
+        if ($this->recordFailedLoginAttempt($throttleKey, $lockoutKey)) {
+            return $this->loginLockoutResponse($request, RateLimiter::availableIn($lockoutKey));
+        }
         return back()->withErrors(['email' => 'Invalid credentials']);
+    }
+
+    private function loginThrottleKey(Request $request): string
+    {
+        $identity = mb_strtolower(trim((string) $request->input('email'))) . '|' . $request->ip();
+
+        return 'login:'.hash('sha256', $identity);
+    }
+
+    private function recordFailedLoginAttempt(string $throttleKey, string $lockoutKey): bool
+    {
+        RateLimiter::hit($throttleKey, 180);
+
+        if (RateLimiter::attempts($throttleKey) < 5) {
+            return false;
+        }
+
+        RateLimiter::clear($throttleKey);
+        RateLimiter::hit($lockoutKey, 180);
+
+        return true;
+    }
+
+    private function loginLockoutResponse(Request $request, int $seconds)
+    {
+        $seconds = max(1, $seconds);
+
+        return back()
+            ->withInput($request->only('email'))
+            ->withErrors(['email' => 'Too many failed login attempts. Please wait for the countdown before trying again.'])
+            ->with('login_lockout_seconds', $seconds);
     }
     
     public function logout(Request $request)
     {
+        $user = Auth::user();
+        if ($user) {
+            $this->recordLoginHistory($request, $user, 'success', null, 'logout');
+        }
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
         session()->forget(['user_branch', 'user_branch_code', 'branch_id']);
         return redirect('/');
+    }
+
+    private function recordLoginHistory(Request $request, ?User $user, string $status, ?string $reason = null, string $event = 'login'): void
+    {
+        LoginHistory::create([
+            'user_id' => $user?->id,
+            'event' => $event,
+            'status' => $status,
+            'email' => $request->input('email') ?: $user?->email,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'failure_reason' => $reason,
+        ]);
     }
 }

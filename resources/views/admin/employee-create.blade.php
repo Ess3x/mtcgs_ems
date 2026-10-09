@@ -63,6 +63,22 @@
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
+                                <label class="form-label">Date of Birth</label>
+                                <input type="date" name="date_of_birth" class="form-control" value="{{ old('date_of_birth') }}">
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label class="form-label">Gender</label>
+                                <select name="gender" class="form-control">
+                                    <option value="">-- Select Gender --</option>
+                                    <option value="Male" {{ old('gender') === 'Male' ? 'selected' : '' }}>Male</option>
+                                    <option value="Female" {{ old('gender') === 'Female' ? 'selected' : '' }}>Female</option>
+                                    <option value="Other" {{ old('gender') === 'Other' ? 'selected' : '' }}>Other</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
                                 <label class="form-label">Date Hired <span class="text-danger">*</span></label>
                                 <input type="date" name="date_hired" class="form-control" value="{{ old('date_hired') }}" required>
                             </div>
@@ -71,9 +87,10 @@
                                 <select name="status" class="form-select" required>
                                     <option value="">-- Select Status --</option>
                                     <option value="New Hire" {{ old('status') === 'New Hire' ? 'selected' : '' }}>New Hire</option>
-                                    <option value="Regular" {{ old('status') === 'Regular' ? 'selected' : '' }}>Regular</option>
-                                    <option value="1-2 Years in Service" {{ old('status') === '1-2 Years in Service' ? 'selected' : '' }}>1-2 Years in Service</option>
+                                    <option value="1 Year of Service" {{ old('status') === '1 Year of Service' ? 'selected' : '' }}>1 Year of Service</option>
                                     <option value="3+ Years of Service" {{ old('status') === '3+ Years of Service' ? 'selected' : '' }}>3+ Years of Service</option>
+                                    <option value="Regular" {{ old('status') === 'Regular' ? 'selected' : '' }} style="display:none;">Regular</option>
+                                    <option value="1-2 Years in Service" {{ old('status') === '1-2 Years in Service' ? 'selected' : '' }} style="display:none;">1-2 Years in Service</option>
                                 </select>
                             </div>
                         </div>

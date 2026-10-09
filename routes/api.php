@@ -13,6 +13,11 @@ Route::get('/ping', fn () => response()->json(['success' => true]));
 Route::post('/attendance/clock', [App\Http\Controllers\Api\AttendanceController::class, 'clockAttendance']);
 
 // Fingerprint scanner time-in/time-out (no auth required)
+Route::get('/biometric/time-clock', fn () => response()->json([
+    'success' => false,
+    'message' => 'This endpoint accepts POST requests from the fingerprint attendance application only.',
+    'method' => 'POST',
+], 405));
 Route::post('/biometric/time-clock', [BiometricController::class, 'processTimeClock']);
 Route::get('/biometric/check-attendance', [BiometricController::class, 'checkAttendance']);
 Route::get('/biometric/templates', [BiometricController::class, 'getFingerprintTemplates']);
@@ -24,10 +29,12 @@ Route::post('/biometric/verify', [BiometricController::class, 'verifyFingerprint
 Route::post('/fingerprint-register-temp', [BiometricController::class, 'registerFingerprintTemp']);
 Route::get('/fingerprint-temp', [BiometricController::class, 'getFingerprintTemp']);
 Route::post('/fingerprint-check-status', [BiometricController::class, 'checkFingerprintStatus']);
+Route::get('/biometric/bridge-status', [BiometricController::class, 'getBridgeStatus']);
 
 // MAC Address Validation (no auth required - called from C# application)
 Route::post('/validate-mac-address', [MacAddressController::class, 'validateMacAddress']);
 Route::get('/device-info', [MacAddressController::class, 'getDeviceInfo']);
+Route::get('/device-status', [MacAddressController::class, 'getDeviceStatus']);
 
 Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);

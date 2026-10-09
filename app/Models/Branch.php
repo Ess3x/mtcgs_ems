@@ -10,6 +10,11 @@ class Branch extends Model
 
     public function employees()
     {
-        return $this->hasMany(Employee::class);
+        return $this->hasMany(EmployeeProfile::class, 'branch_id');
+    }
+
+    public function employeeCount()
+    {
+        return $this->employees()->count();
     }
 }

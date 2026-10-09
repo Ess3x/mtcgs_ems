@@ -160,7 +160,10 @@ class EmployeeController extends Controller
                 $totalFinance = $totalFinance->count();
                 
                 $totalAdmins = AdminProfile::whereHas('user', function ($q) {
-                    $q->where('is_active', true);
+                    $q->where('is_active', true)
+                        ->where(function ($sub) {
+                            $sub->where('role', 'admin')->where('admin_type', 'branch_admin');
+                        });
                 });
                 if ($branchFilter) {
                     $totalAdmins = $totalAdmins->where('branch_id', $branchFilter);
@@ -214,7 +217,10 @@ class EmployeeController extends Controller
         $totalFinance = $totalFinance->count();
         
         $totalAdmins = AdminProfile::whereHas('user', function($q) {
-            $q->where('is_active', true);
+            $q->where('is_active', true)
+                ->where(function ($sub) {
+                    $sub->where('role', 'admin')->where('admin_type', 'branch_admin');
+                });
         });
         if ($branchFilter) {
             $totalAdmins = $totalAdmins->where('branch_id', $branchFilter);
@@ -360,7 +366,10 @@ class EmployeeController extends Controller
         $totalFinance = $totalFinance->count();
         
         $totalAdmins = AdminProfile::whereHas('user', function($q) {
-            $q->where('is_active', false);
+            $q->where('is_active', false)
+                ->where(function ($sub) {
+                    $sub->where('role', 'admin')->where('admin_type', 'branch_admin');
+                });
         });
         if ($branchFilter) {
             $totalAdmins = $totalAdmins->where('branch_id', $branchFilter);
@@ -441,8 +450,10 @@ class EmployeeController extends Controller
             'employee_number' => ['required', 'string', 'min:5', 'max:30', 'regex:/^[A-Za-z0-9][A-Za-z0-9_-]*$/'],
             'branch_id' => $isFinanceHead ? 'nullable|exists:branches,id' : 'required|exists:branches,id',
             'position' => 'required',
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
+            'gender' => 'nullable|in:Male,Female,Other',
             'date_hired' => 'required|date',
-            'status' => 'required|in:New Hire,Regular,1-2 Years in Service,3+ Years of Service',
+            'status' => 'required|in:New Hire,1 Year of Service,3+ Years of Service,Regular,1-2 Years in Service',
             'role' => $allowedRoles,
             'basic_salary' => 'nullable|numeric|min:0',
             'fingerprint_data' => 'nullable|string',
@@ -517,6 +528,8 @@ class EmployeeController extends Controller
                     'first_name' => $request->first_name,
                     'last_name' => $request->last_name,
                     'position' => $request->position,
+                    'date_of_birth' => $request->date_of_birth,
+                    'gender' => $request->gender,
                     'basic_salary' => $request->basic_salary ?? 0,
                     'date_hired' => $request->date_hired,
                     'status' => $request->status,
@@ -579,6 +592,18 @@ class EmployeeController extends Controller
                     'profile_id' => $admin->id
                 ];
             } else {
+                $finance = FinanceProfile::whereHas('user', function($q) {
+                        $q->whereIn('role', ['finance_officer', 'finance_head']);
+                    })
+                    ->find($id);
+
+                if ($finance) {
+                    return redirect()->route('admin.user-edit', [
+                        'role' => 'finance',
+                        'id' => $finance->id,
+                    ]);
+                }
+
                 abort(404, 'Account not found');
             }
         }
@@ -647,8 +672,10 @@ class EmployeeController extends Controller
             'last_name' => 'required',
             'position' => 'required',
             'branch_id' => $isFinanceHead ? 'nullable|exists:branches,id' : 'required|exists:branches,id',
+            'date_of_birth' => 'nullable|date|before_or_equal:today',
+            'gender' => 'nullable|in:Male,Female,Other',
             'date_hired' => 'required|date',
-            'status' => 'required|in:New Hire,Regular,1-2 Years in Service,3+ Years of Service',
+            'status' => 'required|in:New Hire,1 Year of Service,3+ Years of Service,Regular,1-2 Years in Service',
             'role' => $allowedRoles,
             'basic_salary' => 'nullable|numeric|min:0',
             'fingerprint_data' => 'nullable|string',
@@ -683,6 +710,8 @@ class EmployeeController extends Controller
                 'first_name' => $request->first_name,
                 'last_name' => $request->last_name,
                 'position' => $request->position,
+                'date_of_birth' => $request->date_of_birth,
+                'gender' => $request->gender,
                 'basic_salary' => $basicSalary,
                 'branch_id' => $branchId,
                 'date_hired' => $request->date_hired,

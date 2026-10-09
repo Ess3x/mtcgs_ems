@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'ID Verification')
+@section('title', 'Account Creation Approval')
 
 @section('content')
 <div class="container-fluid">
@@ -8,8 +8,8 @@
         <div class="col-12">
             <div class="card bg-info text-white">
                 <div class="card-body">
-                    <h2><i class="fas fa-id-card me-2"></i> ID Verification</h2>
-                    <p class="mb-0">Review and verify employee registrations</p>
+                    <h2><i class="fas fa-id-card me-2"></i> Account Creation Approval</h2>
+                    <p class="mb-0">Review and approve employee registrations</p>
                 </div>
             </div>
         </div>
@@ -84,7 +84,7 @@
             <table class="table table-hover">
                 <thead class="table-light">
                     <tr>
-                        <th>Date</th><th>Name</th><th>Email</th><th>Employee #</th><th>Role</th><th>ID</th><th>Actions</th>
+                        <th>Date</th><th>Name</th><th>Email</th><th>Employee #</th><th>Role</th><th>Status</th><th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -96,11 +96,12 @@
                         <td>{{ optional($user->profile)->employee_number ?? 'N/A' }}</td>
                         <td><span class="badge bg-secondary">{{ ucfirst($user->role) }}</span></td>
                         <td>
-                            @if($user->id_document_path)
-                                <a href="{{ route('admin.verify.document', $user->id) }}" target="_blank" class="btn btn-sm btn-info me-1">View ID</a>
-                            @else
-                                <span class="text-muted">No ID</span>
-                            @endif
+                            @php
+                                $verificationStatus = optional($user->profile)->status ?? 'New Hire';
+                            @endphp
+                            <span class="badge {{ $verificationStatus === 'New Hire' ? 'bg-secondary' : ($verificationStatus === '1 Year of Service' ? 'bg-info text-dark' : 'bg-success') }}">
+                                {{ $verificationStatus }}
+                            </span>
                         </td>
                         <td>
                             <button class="btn btn-sm btn-primary me-1" data-bs-toggle="modal" data-bs-target="#viewModal{{ $user->id }}">View</button>
@@ -206,77 +207,62 @@
             </div>
             <div class="modal-body">
                 <div class="row gx-4 gy-3 align-items-start">
-                    <div class="col-lg-6">
-                        <div class="card border-secondary mb-3 h-100">
-                            <div class="card-header bg-light"><strong>User Details</strong></div>
-                            <div class="card-body p-3">
-                                <table class="table table-sm table-borderless mb-0">
+                    <div class="col-12">
+                        <div class="card border-secondary mb-3 h-100" style="background-color: #010736; border-color: rgba(148,163,184,0.35);">
+                            <div class="card-header" style="background-color: #010736; color: #e2e8f0; border-bottom-color: rgba(148,163,184,0.35);"><strong>User Details</strong></div>
+                            <div class="card-body p-3" style="background-color: #010736; color: #e2e8f0;">
+                                <table class="table table-sm table-borderless mb-0" style="color: #e2e8f0;">
                                     <tbody>
                                         <tr>
-                                            <th style="width:30%;" class="text-end pe-3">Name</th>
-                                            <td>{{ $user->name }}</td>
+                                            <th style="width:30%;" class="text-end pe-3" style="color: #e2e8f0;">Name</th>
+                                            <td style="color: #e2e8f0;">{{ $user->name }}</td>
                                         </tr>
                                         <tr>
-                                            <th class="text-end pe-3">Email</th>
-                                            <td>{{ $user->email }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Email</th>
+                                            <td style="color: #e2e8f0;">{{ $user->email }}</td>
                                         </tr>
                                         <tr>
-                                            <th class="text-end pe-3">Employee #</th>
-                                            <td>{{ optional($user->profile)->employee_number ?? 'N/A' }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Employee #</th>
+                                            <td style="color: #e2e8f0;">{{ optional($user->profile)->employee_number ?? 'N/A' }}</td>
                                         </tr>
                                         <tr>
-                                            <th class="text-end pe-3">Role</th>
-                                            <td>{{ ucfirst($user->role) }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Role</th>
+                                            <td style="color: #e2e8f0;">{{ ucfirst($user->role) }}</td>
                                         </tr>
                                         <tr>
-                                            <th class="text-end pe-3">Position</th>
-                                            <td>{{ optional($user->profile)->position ?? 'N/A' }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Position</th>
+                                            <td style="color: #e2e8f0;">{{ optional($user->profile)->position ?? 'N/A' }}</td>
                                         </tr>
                                         <tr>
-                                            <th class="text-end pe-3">Branch</th>
-                                            <td>{{ optional(optional($user->profile)->branch)->branch_name ?? 'N/A' }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Date of Birth</th>
+                                            <td style="color: #e2e8f0;">{{ optional($user->profile)->date_of_birth ? optional($user->profile->date_of_birth)->format('Y-m-d') : 'N/A' }}</td>
                                         </tr>
                                         <tr>
-                                            <th class="text-end pe-3">Submitted at</th>
-                                            <td>{{ $user->created_at->format('Y-m-d H:i') }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Gender</th>
+                                            <td style="color: #e2e8f0;">{{ optional($user->profile)->gender ?? 'N/A' }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Branch</th>
+                                            <td style="color: #e2e8f0;">{{ optional(optional($user->profile)->branch)->branch_name ?? 'N/A' }}</td>
+                                        </tr>
+                                        <tr>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Submitted at</th>
+                                            <td style="color: #e2e8f0;">{{ $user->created_at->format('Y-m-d H:i') }}</td>
                                         </tr>
                                         @if(optional($user->profile)->contact_number)
                                         <tr>
-                                            <th class="text-end pe-3">Contact</th>
-                                            <td>{{ $user->profile->contact_number }}</td>
+                                            <th class="text-end pe-3" style="color: #e2e8f0;">Contact</th>
+                                            <td style="color: #e2e8f0;">{{ $user->profile->contact_number }}</td>
                                         </tr>
                                         @endif
                                         @if(optional($user->profile)->address)
                                         <tr>
-                                            <th class="text-end pe-3 align-top">Address</th>
-                                            <td>{{ $user->profile->address }}</td>
+                                            <th class="text-end pe-3 align-top" style="color: #e2e8f0;">Address</th>
+                                            <td style="color: #e2e8f0;">{{ $user->profile->address }}</td>
                                         </tr>
                                         @endif
                                     </tbody>
                                 </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-lg-6">
-                        <div class="card border-secondary mb-3">
-                            <div class="card-header bg-light"><strong>ID Document</strong></div>
-                            <div class="card-body text-center">
-                                @if($user->id_document_path)
-                                    @php
-                                        $documentUrl = route('admin.verify.document', $user->id);
-                                        $extension = strtolower(pathinfo($user->id_document_path, PATHINFO_EXTENSION));
-                                        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif'];
-                                    @endphp
-                                    @if(in_array($extension, $imageExtensions))
-                                        <img src="{{ $documentUrl }}" alt="ID Document" class="img-fluid rounded" style="max-height:420px; width:auto;" />
-                                    @else
-                                        <p class="text-muted">ID file is not a supported image preview.</p>
-                                        <a href="{{ $documentUrl }}" target="_blank" class="btn btn-sm btn-info">Open ID Document</a>
-                                    @endif
-                                @else
-                                    <p class="text-muted">No ID document uploaded.</p>
-                                @endif
                             </div>
                         </div>
                     </div>

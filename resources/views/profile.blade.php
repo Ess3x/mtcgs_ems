@@ -31,6 +31,35 @@
                     </h5>
                 </div>
                 <div class="card-body">
+                    @if(session('photo_updated'))
+                        <div class="alert alert-success py-2" role="alert">
+                            <i class="fas fa-check-circle me-1"></i>{{ session('photo_updated') }}
+                        </div>
+                    @endif
+                    <form id="profile-photo-form" method="POST" action="{{ route('profile.photo.save') }}" enctype="multipart/form-data" class="mb-4">
+                        @csrf
+                        <div class="text-center">
+                            <label for="profile_photo" class="d-inline-block position-relative" title="Click to upload a profile picture" style="cursor: pointer;">
+                                @if($profile && $profile->profile_photo)
+                                    <img src="{{ route('profile.photo', [strtolower(class_basename($profile)), $profile->id]) . '?v=' . $profile->updated_at?->timestamp }}" alt="Profile photo" class="rounded-circle border shadow-sm" style="width: 140px; height: 140px; object-fit: cover;">
+                                @else
+                                    <span class="rounded-circle border bg-light text-primary shadow-sm d-flex align-items-center justify-content-center" style="width: 140px; height: 140px; font-size: 4rem;">
+                                        <i class="fas fa-user-circle"></i>
+                                    </span>
+                                @endif
+                                <span class="position-absolute bottom-0 end-0 rounded-circle bg-primary text-white d-flex align-items-center justify-content-center border border-white" style="width: 38px; height: 38px;" aria-hidden="true">
+                                    <i class="fas fa-camera"></i>
+                                </span>
+                            </label>
+                            <input type="file" name="profile_photo" id="profile_photo" class="visually-hidden" accept="image/jpeg,image/png,image/webp" required>
+                            <div class="small text-muted mt-2">Click the profile icon to upload a picture</div>
+                            <div class="small text-muted">JPG, PNG, or WEBP up to 2 MB.</div>
+                        </div>
+                        @error('profile_photo')
+                            <div class="text-danger small text-center mt-1">{{ $message }}</div>
+                        @enderror
+                    </form>
+
                     <!-- User Account Info -->
                     <div class="row mb-4">
                         <div class="col-12">
@@ -133,6 +162,29 @@
                             <h6 class="text-primary mb-3">
                                 <i class="fas fa-briefcase me-2"></i>{{ $profileType }} Details
                             </h6>
+                        </div>
+
+                        @php
+                            $personalProfile = $profile;
+                            if ($profile instanceof \App\Models\FinanceProfile
+                                || $profile instanceof \App\Models\AdminProfile
+                                || $profile instanceof \App\Models\BranchHeadProfile) {
+                                $personalProfile = $profile->employeeProfile;
+                            }
+                        @endphp
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-label text-muted">Birthdate</div>
+                                <p class="mb-0 fw-semibold">
+                                    {{ $personalProfile?->date_of_birth?->format('M d, Y') ?? 'Not specified' }}
+                                </p>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <div class="form-label text-muted">Gender</div>
+                                <p class="mb-0 fw-semibold">{{ $personalProfile?->gender ?? 'Not specified' }}</p>
+                            </div>
                         </div>
 
                         @if($profile instanceof \App\Models\EmployeeProfile)
@@ -277,12 +329,17 @@
                                 </p>
                             </div>
                         </div>
-                        <div class="col-md-6">
-                            <div class="mb-3">
-                                <div class="form-label text-muted">Branch</div>
-                                <p class="mb-0 fw-semibold">{{ $profile->branch ? $profile->branch->branch_name : 'Not assigned' }}</p>
+                        @php
+                            $isNonBranchAdminRole = $user->role === 'admin' && in_array($user->admin_type ?? '', ['super_admin', 'hr'], true);
+                        @endphp
+                        @if(!$isNonBranchAdminRole)
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <div class="form-label text-muted">Branch</div>
+                                    <p class="mb-0 fw-semibold">{{ $profile->branch ? $profile->branch->branch_name : 'Not assigned' }}</p>
+                                </div>
                             </div>
-                        </div>
+                        @endif
                         @elseif($profile instanceof \App\Models\FinanceProfile)
                         <div class="col-md-6">
                             <div class="mb-3">
@@ -359,9 +416,18 @@
                         </div>
                     @endif
                     <p class="text-muted small">Draw your signature below. It will be used when submitting your DTR.</p>
-                    @if($profile->signature_path)
+                    @php
+                        $linkedSignaturePath = null;
+                        if ($profile instanceof \App\Models\EmployeeProfile) {
+                            $linkedSignaturePath = \App\Models\FinanceProfile::where('employee_profile_id', $profile->id)->value('signature_path')
+                                ?? \App\Models\AdminProfile::where('employee_profile_id', $profile->id)->value('signature_path');
+                        }
+                        $hasSavedSignature = ($profile->signature_path && \Illuminate\Support\Facades\Storage::disk('public')->exists($profile->signature_path))
+                            || ($linkedSignaturePath && \Illuminate\Support\Facades\Storage::disk('public')->exists($linkedSignaturePath));
+                    @endphp
+                    @if($hasSavedSignature)
                         <div class="border rounded p-2 mb-3 text-center">
-                            <img src="{{ route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id]) }}" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
+                            <img src="{{ ($profile instanceof \App\Models\EmployeeProfile ? route('profile.signature', $profile->id) : route('profile.signature.any', [strtolower(class_basename($profile)), $profile->id])) . '?v=' . $profile->updated_at?->timestamp }}" alt="Saved e-signature" class="img-fluid" style="width: 320px; max-width: 100%; height: 100px; object-fit: contain;">
                             <div class="small text-muted mt-1">Saved signature</div>
                         </div>
                     @endif
@@ -569,6 +635,15 @@
 @endif
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        const profilePhotoInput = document.getElementById('profile_photo');
+        const profilePhotoForm = document.getElementById('profile-photo-form');
+
+        profilePhotoInput?.addEventListener('change', function () {
+            if (this.files.length) {
+                profilePhotoForm?.submit();
+            }
+        });
+
         const editButton = document.getElementById('edit-government-numbers');
         const saveButton = document.getElementById('save-government-numbers');
         const fields = document.querySelectorAll('.government-number-field');

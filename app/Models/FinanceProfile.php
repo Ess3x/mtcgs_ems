@@ -13,7 +13,7 @@ class FinanceProfile extends Model
         'position', 'department', 'salary_grade', 'status', 'accessible_branches',
         'can_process_payroll', 'can_approve_payroll', 'can_create_employees', 'can_manage_accounts',
         'authority_granted_by', 'authority_granted_at', 'date_hired',
-        'contact_number', 'address', 'fingerprint_template', 'signature_path', 'is_fingerprint_registered',
+        'contact_number', 'address', 'profile_photo', 'fingerprint_template', 'signature_path', 'is_fingerprint_registered',
         'basic_salary', 'hourly_rate', 'pending_changes', 'changes_requested_by', 'changes_requested_at'
     ];
     

@@ -3,18 +3,34 @@
 @section('title', 'Branch Admin Management')
 
 @section('content')
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-3">
+<div class="container-fluid branch-admin-page">
+    <div class="branch-admin-toolbar d-flex justify-content-between align-items-center mb-3">
         <div>
             <h3 class="mb-1">Branch Admin Management</h3>
             <p class="text-muted mb-0">Manage branch-specific admin accounts and access control.</p>
         </div>
-        <a href="{{ route('admin.branch-heads.create') }}" class="btn btn-primary">
+        <a href="{{ route('admin.branch-heads.create') }}" class="btn btn-primary branch-admin-create">
             <i class="fas fa-plus me-1"></i> Create Branch Admin
         </a>
     </div>
 
     <div class="row g-3 mb-4">
+        <div class="col-md-5">
+            <form method="GET" class="branch-admin-filter d-flex align-items-end gap-2">
+                <div class="flex-grow-1">
+                    <label for="branch-admin-filter" class="form-label">Filter by Branch</label>
+                    <select id="branch-admin-filter" name="branch_id" class="form-select" onchange="this.form.submit()">
+                        <option value="">All Branches</option>
+                        @foreach($branches as $branch)
+                            <option value="{{ $branch->id }}" {{ $selectedBranch == $branch->id ? 'selected' : '' }}>
+                                {{ $branch->branch_name }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <a href="{{ route('admin.branch-heads.index') }}" class="btn btn-secondary">Reset</a>
+            </form>
+        </div>
         <div class="col-md-4">
             <div class="card h-100">
                 <div class="card-body">
@@ -82,7 +98,7 @@
         </div>
         @if($branchHeads instanceof \Illuminate\Contracts\Pagination\Paginator || $branchHeads instanceof \Illuminate\Contracts\Pagination\LengthAwarePaginator)
             <div class="card-footer">
-                <div class="d-flex justify-content-between align-items-center">
+                <div class="branch-admin-pagination d-flex justify-content-between align-items-center">
                     <small class="text-muted">
                         Showing <strong>{{ $branchHeads->count() }}</strong> result{{ $branchHeads->count() != 1 ? 's' : '' }}
                     </small>
@@ -95,3 +111,54 @@
     </div>
 </div>
 @endsection
+
+@push('styles')
+<style>
+    @media (max-width: 767.98px) {
+        .branch-admin-page {
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+        }
+
+        .branch-admin-page .branch-admin-toolbar {
+            align-items: flex-start !important;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+
+        .branch-admin-page .branch-admin-toolbar h3 {
+            font-size: 1.3rem;
+        }
+
+        .branch-admin-page .branch-admin-create {
+            width: 100%;
+        }
+
+        .branch-admin-page .branch-admin-filter {
+            align-items: stretch !important;
+            flex-direction: column;
+        }
+
+        .branch-admin-page .branch-admin-filter .btn {
+            width: 100%;
+        }
+
+        .branch-admin-page .branch-admin-pagination {
+            align-items: stretch !important;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .branch-admin-page .branch-admin-pagination nav,
+        .branch-admin-page .branch-admin-pagination .pagination {
+            max-width: 100%;
+            overflow-x: auto;
+        }
+
+        .branch-admin-page .branch-admin-pagination .pagination {
+            flex-wrap: nowrap;
+            margin-bottom: 0;
+        }
+    }
+</style>
+@endpush

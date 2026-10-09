@@ -2,9 +2,39 @@
 
 @section('title', 'Admin Dashboard')
 
+@push('styles')
+<style>
+    .dashboard-shell { min-width: 0; overflow-x: hidden; }
+    .dashboard-shell .dashboard-stat-card .card-body > .d-flex > div:first-child { min-width: 0; }
+    .dashboard-shell .dashboard-stat-card .text-uppercase { overflow-wrap: anywhere; }
+    .dashboard-shell .chart-container { min-width: 0; }
+
+    @media (max-width: 576px) {
+        .dashboard-shell .dashboard-hero .card-body { padding: 1.15rem; }
+        .dashboard-shell .dashboard-hero .d-flex { align-items: flex-start !important; }
+        .dashboard-shell .welcome-title { line-height: 1.25; }
+        .dashboard-shell .welcome-date { font-size: 1.65rem; }
+        .dashboard-shell .dashboard-stat-card .card-body { padding: 0.85rem; }
+        .dashboard-shell .dashboard-stat-card .d-flex { gap: 0.5rem !important; }
+        .dashboard-shell .dashboard-stat-card .stat-icon { width: 38px; height: 38px; border-radius: 10px; }
+        .dashboard-shell .dashboard-stat-card .stat-icon i { font-size: 1rem; }
+        .dashboard-shell .dashboard-stat-card small { display: block; line-height: 1.2; }
+        .dashboard-shell .chart-container[style*="height: 320px"] { height: 250px !important; }
+        .dashboard-shell .chart-container[style*="height: 220px"] { height: 200px !important; }
+        .dashboard-shell .card-header { padding: 0.85rem 1rem; }
+        .dashboard-shell .card-footer { gap: 0.5rem; }
+        .dashboard-shell .card-footer > div { min-width: 0; flex: 1 1 0; }
+        .dashboard-shell .card-footer .badge { white-space: normal; }
+        .dashboard-shell .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .dashboard-shell .table { min-width: 520px; }
+    }
+</style>
+@endpush
+
 @section('content')
 <div class="container-fluid dashboard-shell p-0">
     <div id="dashboardNotificationContainer"></div>
+    @include('dashboard.birthday-banner')
 
     <!-- Welcome Hero -->
     <div class="card dashboard-hero mb-4" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">

@@ -9,14 +9,30 @@ use Illuminate\Support\Facades\Auth;
 
 class ShiftController extends Controller
 {
-    private function adminOnly(): void
+    private function canViewSchedules(): bool
     {
-        abort_unless(Auth::user()->isAdmin(), 403);
+        $user = Auth::user();
+
+        if (!$user) {
+            return false;
+        }
+
+        return $user->isSuperAdmin()
+            || $user->role === 'branch_head'
+            || ($user->role === 'admin' && in_array($user->admin_type ?? '', ['branch_admin', 'hr'], true));
+    }
+
+    private function canManageSchedules(): bool
+    {
+        $user = Auth::user();
+
+        return $user?->role === 'admin' && $user->admin_type === 'branch_admin';
     }
 
     public function index()
     {
-        $this->adminOnly();
+        abort_unless($this->canViewSchedules(), 403, 'You do not have access to view shifts and schedules.');
+
         $user = Auth::user();
         $branchId = $user->isSuperAdmin() ? null : $user->getEffectiveBranchId();
 
@@ -32,12 +48,14 @@ class ShiftController extends Controller
             ->orderBy('last_name')
             ->get();
 
-        return view('admin.shifts.index', compact('shifts', 'employees'));
+        $canManageSchedules = $this->canManageSchedules();
+
+        return view('admin.shifts.index', compact('shifts', 'employees', 'canManageSchedules'));
     }
 
     public function store(Request $request)
     {
-        $this->adminOnly();
+        abort_unless($this->canManageSchedules(), 403, 'Only Branch Admin can set schedules.');
         $validated = $request->validate([
             'name' => 'required|string|max:100|unique:shifts,name',
             'class_code' => 'nullable|string|max:50',
@@ -55,7 +73,7 @@ class ShiftController extends Controller
 
     public function update(Request $request, Shift $shift)
     {
-        $this->adminOnly();
+        abort_unless($this->canManageSchedules(), 403, 'Only Branch Admin can set schedules.');
         $validated = $request->validate([
             'name' => 'required|string|max:100|unique:shifts,name,' . $shift->id,
             'class_code' => 'nullable|string|max:50',
@@ -72,9 +90,47 @@ class ShiftController extends Controller
         return back()->with('success', 'Shift updated successfully.');
     }
 
+    public function employeeSchedule(EmployeeProfile $employee)
+    {
+        abort_unless($this->canViewSchedules(), 403, 'You do not have access to view shifts and schedules.');
+
+        $user = Auth::user();
+        if (!$user->isSuperAdmin() && $employee->branch_id !== $user->getEffectiveBranchId()) {
+            abort(403, 'You can only view schedules for employees in your branch.');
+        }
+
+        $profile = $employee->load('shifts', 'shift');
+        $shifts = $profile->shifts;
+
+        if ($shifts->isEmpty() && $profile->shift) {
+            $shifts = collect([$profile->shift]);
+        }
+
+        return view('employee.schedule', compact('profile', 'shifts'));
+    }
+
+    public function detachShift(EmployeeProfile $employee, Shift $shift)
+    {
+        abort_unless($this->canManageSchedules(), 403, 'Only Branch Admin can set schedules.');
+
+        $user = Auth::user();
+        if (!$user->isSuperAdmin() && $employee->branch_id !== $user->getEffectiveBranchId()) {
+            abort(403, 'You can only remove schedules from employees in your branch.');
+        }
+
+        $employee->shifts()->detach($shift->id);
+
+        if (($employee->shift_id ?? null) == $shift->id) {
+            $remainingShift = $employee->shifts()->first();
+            $employee->update(['shift_id' => $remainingShift?->id]);
+        }
+
+        return back()->with('success', 'Employee schedule removed successfully.');
+    }
+
     public function assign(Request $request, EmployeeProfile $employee)
     {
-        $this->adminOnly();
+        abort_unless($this->canManageSchedules(), 403, 'Only Branch Admin can set schedules.');
         $user = Auth::user();
         if (!$user->isSuperAdmin() && $employee->branch_id !== $user->getEffectiveBranchId()) {
             abort(403, 'You can only assign schedules to employees in your branch.');
@@ -96,7 +152,7 @@ class ShiftController extends Controller
 
     public function destroy(Shift $shift)
     {
-        $this->adminOnly();
+        abort_unless($this->canManageSchedules(), 403, 'Only Branch Admin can set schedules.');
         $shift->assignedEmployees()->detach();
         $shift->employeeProfiles()->update(['shift_id' => null]);
         $shift->delete();

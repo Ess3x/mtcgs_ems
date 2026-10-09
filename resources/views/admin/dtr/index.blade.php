@@ -124,6 +124,33 @@
                     <div class="d-flex align-items-center gap-2">
                         <span class="badge bg-warning text-dark py-2 px-3">Pending {{ $pendingCount }}</span>
                         <span class="badge bg-success py-2 px-3">Approved {{ $approvedDTRsCount }}</span>
+                        @if(Auth::user()->isBranchAdmin() || Auth::user()->isSuperAdmin())
+                            <a href="{{ route('admin.dtr.export-submitted') }}" class="btn btn-sm btn-success">
+                                <i class="fas fa-file-excel me-1"></i> Export DTR Excel
+                            </a>
+                            @if(Auth::user()->isBranchAdmin() && $pendingCount > 0)
+                                <form method="POST" action="{{ route('admin.dtr.submit-all-to-hr') }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Submit all submitted branch DTRs and the combined Excel report to HR?')">
+                                        <i class="fas fa-paper-plane me-1"></i> Submit All to HR
+                                    </button>
+                                </form>
+                            @endif
+                            @if(Auth::user()->isSuperAdmin() && $pendingCount > 0)
+                                <form method="POST" action="{{ route('admin.dtr.return-all-to-bh') }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-warning" onclick="return confirm('Return all pending DTRs to the Branch Heads for review?')">
+                                        <i class="fas fa-undo me-1"></i> Return All to BH
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ route('admin.dtr.submit-all-to-finance-head') }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('Submit all HR-reviewed DTRs and the combined Excel report to the Finance Head?')">
+                                        <i class="fas fa-paper-plane me-1"></i> Submit All to FH
+                                    </button>
+                                </form>
+                            @endif
+                        @endif
                     </div>
                 </div>
                 <div class="card-body p-3">
@@ -147,39 +174,116 @@
                                         @if (Auth::user()->isSuperAdmin())
                                             <div class="fw-bold text-white mb-2 border-bottom pb-2">{{ $branchName }}</div>
                                         @endif
-                                        <div class="table-responsive">
-                                            <table class="table table-striped table-hover table-sm align-middle mb-0" style="color: white;">
-                                                <thead style="background-color: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.1);">
+                                        <div class="table-responsive border rounded-3 bg-white shadow-sm">
+                                            @php
+                                                $firstDtr = $branchDTRs->first();
+                                                $periodHeaders = [];
+                                                if ($firstDtr) {
+                                                    $current = $firstDtr->period_start->copy();
+                                                    $end = $firstDtr->period_end;
+                                                    while ($current <= $end) {
+                                                        if (!in_array($current->dayOfWeek, [0, 6], true)) {
+                                                            $periodHeaders[] = $current->copy();
+                                                        }
+                                                        $current->addDay();
+                                                    }
+                                                }
+                                            @endphp
+
+                                            <table class="table table-sm align-middle mb-0" style="border-collapse: collapse; border: 1px solid #c8ced6;">
+                                                <thead class="table-light">
                                                     <tr>
-                                                        <th>Employee</th>
-                                                        <th>Period</th>
-                                                        <th class="text-center">Days Present</th>
-                                                        <th class="text-center">Total Hours</th>
-                                                        <th class="text-center">Overtime</th>
-                                                        <th class="text-center">Action</th>
+                                                        <th class="text-uppercase small text-muted fw-semibold" style="min-width: 180px; border: 1px solid #c8ced6; background-color: #f8f9fa; padding: 0.85rem 0.75rem;">Employee</th>
+                                                        @foreach ($periodHeaders as $headerDate)
+                                                            <th class="text-uppercase small text-muted fw-semibold text-center" style="min-width: 76px; width: 90px; border: 1px solid #c8ced6; background-color: #f8f9fa; padding: 0.85rem 0.2rem; text-align: center; vertical-align: middle;">{{ $headerDate->format('m-d-Y') }}</th>
+                                                        @endforeach
+                                                        <th class="text-uppercase small text-muted fw-semibold text-center" style="border: 1px solid #c8ced6; background-color: #f8f9fa; padding: 0.85rem 0.75rem;">Action</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
                                                     @foreach ($branchDTRs as $dtr)
-                                                        <tr style="border-color: rgba(255,255,255,0.05);">
-                                                            <td class="text-wrap" style="min-width: 180px;">
-                                                                <strong>{{ $dtr->employeeProfile->first_name }} {{ $dtr->employeeProfile->last_name }}</strong>
-                                                                <div class="text-white-50 small">{{ $dtr->employeeProfile->employee_number }}</div>
+                                                        @php
+                                                            $logsByDate = $dtr->attendanceLogs()->keyBy(function ($log) {
+                                                                return $log->attendance_date->format('Y-m-d');
+                                                            });
+
+                                                            $approvedLeaves = \App\Models\LeaveRequest::where('employee_profile_id', $dtr->employee_profile_id)
+                                                                ->where('status', 'approved')
+                                                                ->whereDate('start_date', '<=', $dtr->period_end)
+                                                                ->whereDate('end_date', '>=', $dtr->period_start)
+                                                                ->get();
+
+                                                            $approvedLeaveByDate = [];
+                                                            foreach ($approvedLeaves as $leave) {
+                                                                $current = $leave->start_date->copy();
+                                                                $end = $leave->end_date->copy();
+                                                                while ($current <= $end) {
+                                                                    $approvedLeaveByDate[$current->format('Y-m-d')] = $leave;
+                                                                    $current->addDay();
+                                                                }
+                                                            }
+                                                        @endphp
+                                                        <tr>
+                                                            <td class="text-wrap align-middle" style="min-width: 180px; border: 1px solid #c8ced6; padding: 0.8rem 0.75rem; min-height: 72px;">
+                                                                <div class="fw-bold text-dark">{{ $dtr->employeeProfile->first_name }} {{ $dtr->employeeProfile->last_name }}</div>
+                                                                <div class="small text-muted">{{ $dtr->employeeProfile->employee_number }}</div>
                                                             </td>
-                                                            <td class="text-wrap" style="min-width: 160px;">{{ $dtr->period_start->format('M d') }} - {{ $dtr->period_end->format('M d, Y') }}</td>
-                                                            <td class="text-center text-nowrap">{{ $dtr->getDaysPresent() }}/{{ $dtr->getWorkingDays() }}</td>
-                                                            <td class="text-center text-nowrap">{{ number_format($dtr->getTotalHoursWorked(), 1) }} hrs</td>
-                                                            <td class="text-center text-nowrap">
-                                                                @php $ot = $dtr->getTotalOvertimeHours(); @endphp
-                                                                @if ($ot > 0)
-                                                                    <span class="badge bg-warning">{{ number_format($ot, 1) }} hrs</span>
-                                                                @else
-                                                                    <span class="text-white-50">--</span>
-                                                                @endif
-                                                            </td>
-                                                            <td class="text-center">
+                                                            @foreach ($periodHeaders as $headerDate)
+                                                                @php
+                                                                    $dateStr = $headerDate->format('Y-m-d');
+                                                                    $log = $logsByDate->get($dateStr);
+                                                                    $approvedLeave = $approvedLeaveByDate[$dateStr] ?? null;
+                                                                    $statusText = '';
+                                                                    $statusClass = 'text-muted';
+                                                                    $inTimeClass = 'small fw-bold text-dark';
+                                                                    $outTimeClass = 'small fw-bold text-dark';
+
+                                                                    if ($approvedLeave) {
+                                                                        $statusText = (bool) $approvedLeave->is_absent ? 'Leave Without Pay' : 'Paid Leave';
+                                                                        $statusClass = (bool) $approvedLeave->is_absent ? 'text-warning fw-bold' : 'text-info fw-bold';
+                                                                    } elseif ($log) {
+                                                                        $hasAnyAttendanceTime = (bool) ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out);
+                                                                        $statusText = $hasAnyAttendanceTime ? $log->getDtrStatus() : 'Pending';
+                                                                        $shift = $log->employeeProfile?->shift;
+                                                                        $scheduledStart = $shift?->start_time ?: '07:00:00';
+                                                                        $scheduledEnd = $shift?->end_time ?: '17:00:00';
+
+                                                                        if ($log->am_in) {
+                                                                            $inTimeClass = $log->am_in->gt($log->am_in->copy()->setTimeFromTimeString($scheduledStart)) ? 'small fw-bold text-danger' : 'small fw-bold text-success';
+                                                                        }
+
+                                                                        if ($log->pm_out) {
+                                                                            $outTimeClass = $log->pm_out->lt($log->pm_out->copy()->setTimeFromTimeString($scheduledEnd)) ? 'small fw-bold text-danger' : 'small fw-bold text-success';
+                                                                        }
+
+                                                                        if ($statusText === 'Half Day') {
+                                                                            $statusClass = 'text-primary fw-bold';
+                                                                        } elseif (in_array($statusText, ['Late', 'Early Out', 'Late / Early Out', 'Absent'], true)) {
+                                                                            $statusClass = 'text-danger fw-bold';
+                                                                        } elseif ($statusText === 'Present') {
+                                                                            $statusClass = 'text-success fw-bold';
+                                                                        }
+                                                                    } else {
+                                                                        $statusText = 'Pending';
+                                                                        $statusClass = 'text-muted';
+                                                                    }
+                                                                @endphp
+                                                                <td class="text-center align-middle" style="min-width: 76px; width: 90px; border: 1px solid #c8ced6; padding: 0.5rem 0.2rem; min-height: 72px; text-align: center; vertical-align: middle;">
+                                                                    @if ($log)
+                                                                        <div class="small fw-semibold text-dark">IN</div>
+                                                                        <div class="{{ $inTimeClass }}">{{ $log->am_in ? $log->am_in->format('h:i A') : '--' }}</div>
+                                                                        <div class="small fw-semibold text-dark mt-1">OUT</div>
+                                                                        <div class="{{ $outTimeClass }}">{{ $log->pm_out ? $log->pm_out->format('h:i A') : '--' }}</div>
+                                                                    @else
+                                                                        <span class="{{ $statusClass }}">
+                                                                            {{ $statusText }}
+                                                                        </span>
+                                                                    @endif
+                                                                </td>
+                                                            @endforeach
+                                                            <td class="text-center align-middle" style="border: 1px solid #c8ced6; padding: 0.8rem 0.75rem; min-height: 72px;">
                                                                 <div class="d-flex justify-content-center gap-2 flex-wrap">
-                                                                    <a href="{{ route('admin.dtr.show', $dtr->id) }}" class="btn btn-sm btn-outline-info" title="Review">
+                                                                    <a href="{{ route('admin.dtr.show', $dtr->id) }}" class="btn btn-sm btn-outline-primary" title="Review">
                                                                         <i class="fas fa-eye"></i>
                                                                     </a>
                                                                     @if($canApprove)
@@ -212,7 +316,14 @@
                                 </div>
                             @else
                                 <div class="alert alert-info mb-0" style="background-color: rgba(23,162,184,0.2); border-color: #17a2b8; color: #b8daff;">
-                                    <i class="fas fa-info-circle"></i> No pending DTRs awaiting approval.
+                                    <i class="fas fa-info-circle"></i>
+                                    @if (Auth::user()->isBranchAdmin())
+                                        No submitted DTRs have been received for this branch yet. Once employees submit their DTRs, they will appear here with the employee name.
+                                    @elseif (Auth::user()->isSuperAdmin())
+                                        No DTRs are waiting for HR review at the moment.
+                                    @else
+                                        No pending DTRs awaiting approval.
+                                    @endif
                                 </div>
                             @endif
                         </div>

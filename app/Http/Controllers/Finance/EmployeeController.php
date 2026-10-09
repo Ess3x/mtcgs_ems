@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Finance;
 use App\Http\Controllers\Controller;
 use App\Models\EmployeeProfile;
 use App\Models\User;
+use App\Models\Branch;
 use App\Models\AttendanceLog;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -29,32 +30,37 @@ class EmployeeController extends Controller
         $user = Auth::user();
         if ($user->isFinanceOfficer()) {
             $profile = $user->getFinanceProfile();
-            return $profile->branch_id ?? null;
+            return $profile?->branch_id ?? $user->branch_id ?? 1;
         }
-        return null;
+        return $user->branch_id ?? 1;
     }
     
     public function index()
     {
         $branchId = $this->getBranchId();
-        
-        if (!$branchId) {
-            return redirect('/dashboard')->with('error', 'Branch not assigned');
-        }
-        
-        // IMPORTANTE: I-filter ang employees LANG - ACTIVE only!
-        // Kunin ang lahat ng employee_profiles na nasa branch
-        // at ang kanilang user ay may role = 'employee' at is_active = true
-        $employees = EmployeeProfile::where('branch_id', $branchId)
-            ->whereHas('user', function($q) {
-                $q->where('role', 'employee')
-                  ->where('is_active', true);  // Only active employees
+        $profileTypes = [
+            EmployeeProfile::class,
+            \App\Models\FinanceProfile::class,
+            \App\Models\AdminProfile::class,
+            \App\Models\BranchHeadProfile::class,
+        ];
+
+        $users = User::with(['profile', 'branch'])
+            ->where('is_active', true)
+            ->where(function ($query) use ($branchId, $profileTypes) {
+                $query->whereHasMorph('profile', $profileTypes, function ($profileQuery) use ($branchId) {
+                    $profileQuery->where('branch_id', $branchId);
+                })->orWhere(function ($query) use ($branchId, $profileTypes) {
+                    $query->whereDoesntHaveMorph('profile', $profileTypes)
+                        ->where('branch_id', $branchId);
+                });
             })
+            ->orderBy('name')
             ->get();
+
+        $branchName = Branch::find($branchId)?->branch_name ?? 'Your Branch';
         
-        $branchName = optional($employees->first()?->branch)->branch_name ?? 'Your Branch';
-        
-        return view('finance.employees', compact('employees', 'branchName'));
+        return view('finance.employees', compact('users', 'branchId', 'branchName'));
     }
     
     public function attendance($id)
@@ -94,5 +100,23 @@ class EmployeeController extends Controller
             'employee', 'attendanceLogs', 'currentMonth',
             'attendanceByDate', 'prevMonth', 'nextMonth', 'selectedMonth'
         ));
+    }
+
+    public function profile(string $type, int $id)
+    {
+        $branchId = $this->getBranchId();
+        $profileClass = match (strtolower($type)) {
+            'employee', 'employeeprofile' => EmployeeProfile::class,
+            'finance', 'financeprofile' => \App\Models\FinanceProfile::class,
+            'admin', 'adminprofile' => \App\Models\AdminProfile::class,
+            'branchhead', 'branchheadprofile' => \App\Models\BranchHeadProfile::class,
+            default => abort(404),
+        };
+
+        $profile = $profileClass::with('branch', 'user')->findOrFail($id);
+        $canViewAnyBranch = Auth::user()->isSuperAdmin();
+        abort_unless($canViewAnyBranch || ($profile->branch_id ?? $profile->user?->branch_id) === $branchId, 404);
+
+        return view('finance.employee-profile', compact('profile'));
     }
 }

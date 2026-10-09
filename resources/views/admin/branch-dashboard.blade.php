@@ -4,6 +4,7 @@
 
 @section('content')
 <div class="container-fluid dashboard-shell p-0">
+    @include('dashboard.birthday-banner')
     <!-- Header Hero -->
     <div class="card dashboard-hero mb-4" style="background: linear-gradient(135deg, #06b6d4 0%, #0ea5e9 100%);">
         <div class="card-body">

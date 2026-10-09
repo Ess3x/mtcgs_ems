@@ -150,10 +150,12 @@
                                         }) : null;
                                         $isApprovedLeave = (bool) $approvedLeave;
                                         $isLWOP = $isApprovedLeave && (bool) $approvedLeave->is_absent;
-                                        $isNoRecordYet = !$isWeekend && !$log && $dtr->status !== 'approved';
-                                        $isPastMissedDay = !$isWeekend && !$log && $dtr->status === 'approved';
-                                        $isAbsent = !$isWeekend && ($isPastMissedDay || ($log && strtolower((string) $log->status) === 'absent'));
-                                        $attendanceStatus = $log ? $log->getDtrStatus() : null;
+                                        $isNoRecordYet = false;
+                                        $hasAnyAttendanceTime = (bool) ($log && ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out));
+                                        $isPending = !$isWeekend && !$isApprovedLeave && (!$log || !$hasAnyAttendanceTime) && !$current->isPast();
+                                        $isUpcoming = false;
+                                        $isAbsent = !$isWeekend && !$isApprovedLeave && $current->isPast() && (!$log || !$hasAnyAttendanceTime || in_array(strtolower((string) $log->status), ['absent', 'a'], true));
+                                        $attendanceStatus = $hasAnyAttendanceTime ? $log->getDtrStatus() : null;
                                         $isLateTimeIn = $attendanceStatus && str_contains($attendanceStatus, 'Late');
                                         $isEarlyOut = $attendanceStatus && str_contains($attendanceStatus, 'Early Out');
                                         $hours = 0;
@@ -163,9 +165,9 @@
                                         $statusLetter = $isWeekend ? 'WKD' : (
                                             $isLWOP ? 'LWOP' : (
                                                 $isApprovedLeave ? 'L' : (
-                                                    $isAbsent ? 'A' : (
-                                                        $isNoRecordYet ? '' : ($attendanceStatus ?: 'P')
-                                                    )
+                                                    $isAbsent ? 'A' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : (
+                                                        $isNoRecordYet ? '' : ($isPending ? 'Pending' : ($attendanceStatus ?: 'P'))
+                                                    )))
                                                 )
                                             )
                                         );
@@ -173,7 +175,7 @@
                                             $isLWOP ? 'bg-danger' : (
                                                 $isApprovedLeave ? 'bg-info' : (
                                                     $isAbsent ? 'bg-danger' : (
-                                                        $isNoRecordYet ? 'bg-transparent text-transparent border-0' : ($attendanceStatus === 'Half Day' ? 'bg-warning text-dark' : ($isLateTimeIn || $isEarlyOut ? 'bg-danger' : 'bg-success'))
+                                                        $isPending ? 'bg-secondary' : ($isNoRecordYet ? 'bg-transparent text-transparent border-0' : ($attendanceStatus === 'Half Day' ? 'bg-warning text-dark' : ($isLateTimeIn || $isEarlyOut ? 'bg-danger' : 'bg-success')))
                                                     )
                                                 )
                                             )
@@ -255,9 +257,9 @@
                             <div class="col-md-6">
                                 <form action="{{ route('admin.dtr.approve', $dtr->id) }}" method="POST" style="display: inline;">
                                     @csrf
-                                    <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('{{ $dtr->status === 'submitted' ? 'Approve this DTR and forward it to the System Administrator for review?' : 'Approve this DTR for final review approval?' }}')">
+                                    <button type="submit" class="btn btn-success btn-lg w-100" onclick="return confirm('{{ $dtr->status === 'submitted' ? 'Approve this DTR and forward it to HR for review?' : 'Approve this DTR and forward it to the Finance Head for computation?' }}')">
                                         <i class="fas fa-check-circle"></i>
-                                        {{ $dtr->status === 'submitted' ? 'Approve & Forward to System Admin' : 'Approve DTR' }}
+                                        {{ $dtr->status === 'submitted' ? 'Approve & Forward to HR' : 'Submit to Finance Head' }}
                                     </button>
                                 </form>
                             </div>
@@ -294,6 +296,25 @@
                             <button type="submit" class="btn btn-danger">Reject & Send Back</button>
                         </div>
                     </form>
+                </div>
+            </div>
+        </div>
+    @elseif ($dtr->status === 'pending_finance_head' && Auth::user()->isFinanceHead())
+        <div class="row">
+            <div class="col-12">
+                <div class="card border-primary">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="fas fa-calculator me-2"></i>Finance Head Computation</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="mb-3">Review the attendance records and computed totals above, then finalize this DTR for payroll.</p>
+                        <form method="POST" action="{{ route('admin.dtr.compute', $dtr->id) }}">
+                            @csrf
+                            <button type="submit" class="btn btn-primary btn-lg w-100" onclick="return confirm('Compute and finalize this DTR for payroll?')">
+                                <i class="fas fa-calculator me-2"></i> Compute DTR and Submit to Payroll
+                            </button>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

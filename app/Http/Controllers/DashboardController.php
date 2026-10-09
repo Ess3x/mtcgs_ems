@@ -19,6 +19,14 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
         $role = $user->role;
+        $birthdayProfile = match ($role) {
+            'employee' => $user->getEmployeeProfile(),
+            'finance_officer', 'finance_head' => $user->getFinanceProfile()?->employeeProfile,
+            'admin' => $user->getAdminProfile()?->employeeProfile,
+            'branch_head' => $user->getBranchHeadProfile()?->employeeProfile,
+            default => null,
+        };
+        view()->share('birthdayProfile', $birthdayProfile);
         
         // SUPER ADMIN
         if ($user->isSuperAdmin()) {
@@ -67,6 +75,7 @@ class DashboardController extends Controller
                 ->whereHas('employeeProfile.user', function($q) {
                     $q->where('is_active', true);
                 })
+                ->whereDate('attendance_date', today())
                 ->latest('attendance_date')
                 ->limit(5)
                 ->get()
@@ -169,6 +178,7 @@ class DashboardController extends Controller
                 ->whereHas('employeeProfile.user', function($q) {
                     $q->where('is_active', true);
                 })
+                ->whereDate('attendance_date', today())
                 ->latest('attendance_date')
                 ->limit(5)
                 ->get()
@@ -195,8 +205,8 @@ class DashboardController extends Controller
             ));
         }
         
-        // FINANCE OFFICER
-        if ($user->isFinanceOfficer()) {
+        // FINANCE OFFICER / FINANCE HEAD
+        if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $financeProfile = $user->getFinanceProfile();
             
             // Get branch info with fallback
@@ -262,6 +272,12 @@ class DashboardController extends Controller
                 'monthly_payroll_total' => $monthlyPayroll,
                 'pending_leaves' => $pendingLeaves,
             ];
+
+            if ($requestError = session('error')) {
+                if (in_array($requestError, ['Employee profile not found', 'Branch not assigned'], true)) {
+                    session()->forget('error');
+                }
+            }
             
             return view('finance.dashboard', compact(
                 'branchName', 'stats', 'todayAttendance',
@@ -342,6 +358,7 @@ class DashboardController extends Controller
                 ->whereHas('employeeProfile', function($q) use ($branchId) {
                     $q->where('branch_id', $branchId);
                 })
+                ->whereDate('attendance_date', today())
                 ->latest('attendance_date')
                 ->limit(5)
                 ->get()
@@ -396,7 +413,9 @@ class DashboardController extends Controller
             ->where('status', 'pending')->count();
         
         $recentAttendance = AttendanceLog::where('employee_profile_id', $profile->id)
-            ->latest()->limit(10)->get();
+            ->whereDate('attendance_date', today())
+            ->latest()
+            ->get();
 
         $stats = [
             'days_present' => AttendanceLog::where('employee_profile_id', $profile->id)
@@ -493,10 +512,67 @@ class DashboardController extends Controller
         abort_unless($imageData !== false && strlen($imageData) <= 2 * 1024 * 1024, 422, 'Invalid signature image.');
 
         $path = 'signatures/' . strtolower(class_basename($profile)) . '-' . $profile->id . '.png';
-        Storage::disk('public')->put($path, $imageData);
+        abort_unless(Storage::disk('public')->put($path, $imageData), 500, 'Unable to save signature image.');
         $profile->update(['signature_path' => $path]);
 
         return back()->with('signature_updated', 'E-Signature saved successfully.');
+    }
+
+    public function saveProfilePhoto(\Illuminate\Http\Request $request)
+    {
+        $profile = $request->user()->getEmployeeProfile();
+        if (!$profile && in_array($request->user()->role, ['finance_officer', 'finance_head'], true)) {
+            $profile = $request->user()->getFinanceProfile();
+        }
+        if (!$profile && $request->user()->role === 'admin') {
+            $profile = $request->user()->getAdminProfile();
+        }
+        abort_unless($profile, 403);
+
+        $validated = $request->validate([
+            'profile_photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $oldPath = $profile->profile_photo;
+        $extension = strtolower($validated['profile_photo']->extension());
+        $path = 'profile-photos/' . strtolower(class_basename($profile)) . '-' . $profile->id . '.' . $extension;
+
+        abort_unless(Storage::disk('public')->putFileAs('profile-photos', $validated['profile_photo'], basename($path)), 500, 'Unable to save profile photo.');
+        $profile->update(['profile_photo' => $path]);
+
+        if ($oldPath && $oldPath !== $path) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return back()->with('photo_updated', 'Profile photo updated successfully.');
+    }
+
+    public function profilePhoto(string $type, int $id)
+    {
+        $profileClass = match (strtolower($type)) {
+            'employeeprofile', 'employee' => EmployeeProfile::class,
+            'financeprofile', 'finance' => FinanceProfile::class,
+            'adminprofile', 'admin' => AdminProfile::class,
+            default => null,
+        };
+
+        abort_unless($profileClass, 404);
+
+        $profile = $profileClass::findOrFail($id);
+        $user = Auth::user();
+        $profileBranchId = $profile->branch_id ?? $profile->user?->branch_id;
+        $canViewEmployeeProfile = $profileClass === EmployeeProfile::class
+            && in_array($user->role, ['finance_officer', 'finance_head'], true)
+            && $profileBranchId === $user->getEffectiveBranchId();
+        $canViewBranchProfile = in_array($user->role, ['finance_officer', 'finance_head'], true)
+            && $profileBranchId === $user->getEffectiveBranchId();
+        abort_unless($profile->user_id === $user->id || $user->isAdmin() || $canViewBranchProfile, 403);
+        abort_unless($profile->profile_photo && Storage::disk('public')->exists($profile->profile_photo), 404);
+
+        return response()->file(Storage::disk('public')->path($profile->profile_photo), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function signature(EmployeeProfile $profile)
@@ -518,7 +594,10 @@ class DashboardController extends Controller
 
         abort_unless($path && Storage::disk('public')->exists($path), 404);
 
-        return response()->file(Storage::disk('public')->path($path));
+        return response()->file(Storage::disk('public')->path($path), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function profileSignature(string $type, int $id)
@@ -535,9 +614,21 @@ class DashboardController extends Controller
         $profile = $profileClass::findOrFail($id);
         $user = Auth::user();
         abort_unless($profile->user_id === $user->id || $user->isAdmin(), 403);
-        abort_unless($profile->signature_path && Storage::disk('public')->exists($profile->signature_path), 404);
 
-        return response()->file(Storage::disk('public')->path($profile->signature_path));
+        $path = $profile->signature_path;
+        if ((!$path || !Storage::disk('public')->exists($path)) && $profile instanceof EmployeeProfile) {
+            $path = FinanceProfile::where('employee_profile_id', $profile->id)->value('signature_path');
+        }
+        if ((!$path || !Storage::disk('public')->exists($path)) && $profile instanceof EmployeeProfile) {
+            $path = AdminProfile::where('employee_profile_id', $profile->id)->value('signature_path');
+        }
+
+        abort_unless($path && Storage::disk('public')->exists($path), 404);
+
+        return response()->file(Storage::disk('public')->path($path), [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     public function profileDocument()

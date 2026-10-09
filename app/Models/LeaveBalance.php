@@ -10,6 +10,8 @@ class LeaveBalance extends Model
         'employee_profile_id', 'year', 'sick_leave_total', 'sick_leave_used',
         'vacation_leave_total', 'vacation_leave_used',
         'emergency_leave_total', 'emergency_leave_used',
+        'birthday_leave_total', 'birthday_leave_used',
+        'cash_charge_total', 'cash_charge_used',
         'maternity_leave_total', 'maternity_leave_used',
         'paternity_leave_total', 'paternity_leave_used'
     ];
@@ -21,6 +23,10 @@ class LeaveBalance extends Model
         'vacation_leave_used' => 'decimal:1',
         'emergency_leave_total' => 'decimal:1',
         'emergency_leave_used' => 'decimal:1',
+        'birthday_leave_total' => 'decimal:1',
+        'birthday_leave_used' => 'decimal:1',
+        'cash_charge_total' => 'decimal:1',
+        'cash_charge_used' => 'decimal:1',
         'maternity_leave_total' => 'decimal:1',
         'maternity_leave_used' => 'decimal:1',
         'paternity_leave_total' => 'decimal:1',
@@ -45,6 +51,16 @@ class LeaveBalance extends Model
     public function getAvailableEmergencyLeave()
     {
         return $this->emergency_leave_total - $this->emergency_leave_used;
+    }
+
+    public function getAvailableBirthdayLeave()
+    {
+        return $this->birthday_leave_total - $this->birthday_leave_used;
+    }
+
+    public function getAvailableCashCharge()
+    {
+        return $this->cash_charge_total - $this->cash_charge_used;
     }
 
     public function getAvailableMaternityLeave()

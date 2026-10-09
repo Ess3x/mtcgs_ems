@@ -7,16 +7,16 @@
     <!-- Page Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
+            <div class="dtr-page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+                <div class="dtr-header-copy">
                     <a href="{{ route('employee.dtr.index') }}" class="btn btn-outline-secondary btn-sm mb-3">
                         <i class="fas fa-arrow-left"></i> Back to DTR List
                     </a>
                     <h2 class="mb-2">DTR Details</h2>
-                    <p class="text-muted">{{ $employeeProfile->first_name }} {{ $employeeProfile->last_name }} ({{ $employeeProfile->employee_number }})</p>
+                    <p class="text-muted mb-0">{{ $employeeProfile->first_name }} {{ $employeeProfile->last_name }} ({{ $employeeProfile->employee_number }})</p>
                 </div>
-                <div>
-                    <div class="d-flex gap-2 mb-2 justify-content-end">
+                <div class="dtr-action-group">
+                    <div class="d-flex gap-2 mb-2 justify-content-end flex-wrap">
                         <a href="{{ route('employee.dtr.download', $dtr->id) }}" class="btn btn-primary btn-sm">
                             <i class="fas fa-file-pdf me-1"></i> Download PDF
                         </a>
@@ -48,8 +48,8 @@
     </div>
 
     <!-- Period Info and Statistics -->
-    <div class="row mb-4">
-        <div class="col-md-3">
+    <div class="row mb-4 g-3 dtr-summary-grid">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Period</p>
@@ -60,7 +60,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Hours</p>
@@ -69,7 +69,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Days Present</p>
@@ -78,7 +78,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Late</p>
@@ -92,8 +92,8 @@
         </div>
     </div>
 
-    <div class="row mb-4 g-3">
-        <div class="col-md-3">
+    <div class="row mb-4 g-3 dtr-extra-summary-grid">
+        <div class="col-md-3 dtr-summary-card dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Absent</p>
@@ -101,7 +101,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Paid Leave</p>
@@ -109,7 +109,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Leave Without Pay</p>
@@ -117,7 +117,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-3 dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Early Out</p>
@@ -170,8 +170,8 @@
     <!-- Daily Records Table -->
     <style>
         .dtr-table {
-            width: 760px;
-            max-width: 100%;
+            width: 100%;
+            min-width: 980px;
             table-layout: fixed;
             border-collapse: collapse;
             margin: 0 auto;
@@ -310,9 +310,83 @@
             color: #ff0000 !important;
         }
         @media (max-width: 576px) {
+            .container-fluid {
+                padding-left: 0.75rem;
+                padding-right: 0.75rem;
+            }
+
+            .dtr-page-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .dtr-header-copy {
+                width: 100%;
+            }
+
+            .dtr-action-group {
+                width: 100%;
+            }
+
+            .dtr-action-group .d-flex {
+                justify-content: flex-start !important;
+                width: 100%;
+            }
+
+            .dtr-action-group .btn {
+                flex: 1 1 calc(50% - 0.5rem);
+                min-width: 0;
+                white-space: nowrap;
+                font-size: 0.72rem;
+                padding: 0.55rem 0.5rem;
+            }
+
+            .dtr-summary-grid,
+            .dtr-extra-summary-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 0.75rem;
+            }
+
+            .dtr-summary-card {
+                width: 100%;
+                max-width: 100%;
+            }
+
+            .dtr-summary-card .card-body {
+                padding: 0.9rem 0.7rem;
+            }
+
+            .dtr-summary-card h4 {
+                font-size: 1.2rem;
+            }
+
+            .dtr-summary-card small,
+            .dtr-summary-card p {
+                font-size: 0.72rem;
+            }
+
             .dtr-table {
                 min-width: 620px;
             }
+        }
+
+        .dtr-inline-time {
+            width: 100%;
+            min-width: 112px;
+            font-size: 0.8rem;
+            margin: 0 auto;
+        }
+
+        .dtr-correction-form {
+            width: 100%;
+            max-width: 240px;
+            margin: 0 auto;
+        }
+
+        .dtr-correction-form .form-control,
+        .dtr-correction-form .btn {
+            width: 100%;
         }
     </style>
     <div class="row">
@@ -348,14 +422,21 @@
                                             $isHoliday = ($day['status'] ?? null) === 'holiday' || ($day['is_holiday'] ?? false);
                                             $attendanceStatus = $day['log'] ? $day['log']->getDtrStatus() : null;
                                             $isNoRecordYet = false;
+<<<<<<< HEAD
                                             $isAbsent = !$isWeekend && !$isHoliday && !$day['log'] && !$isLeave && !$isLWOP;
+=======
+                                            $isAbsent = ($day['status'] ?? null) === 'absent';
+                                            $isPending = ($day['status'] ?? null) === 'pending';
+                                            $isUpcoming = ($day['status'] ?? null) === 'upcoming';
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                             $isLate = $attendanceStatus && str_contains($attendanceStatus, 'Late');
                                             $isEarlyOutStatus = $attendanceStatus && str_contains($attendanceStatus, 'Early Out');
                                             $isHalfDay = $attendanceStatus === 'Half Day';
                                             $isLateTimeIn = $isLate || (int) ($day['late_minutes'] ?? 0) > 0;
-                                            $rowClass = $isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : ($isWeekend ? 'dtr-empty' : ($isNoRecordYet ? 'dtr-empty' : '')))))));
-                                            $displayStatus = $isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isNoRecordYet ? '' : 'Present'))))));
+                                            $rowClass = $isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : '')))));
+                                            $displayStatus = $isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : ($isNoRecordYet ? '' : 'Present'))))))));
                                             $isEarlyOut = !empty($day['pm_out']) && $day['pm_out'] !== '--' && strtotime($day['pm_out']) < strtotime('17:00');
+<<<<<<< HEAD
                                             $legacyApprovedWithoutCorrection = $day['log']
                                                 && $day['log']->override_status === 'approved'
                                                 && !$day['log']->corrected_time_in
@@ -364,6 +445,11 @@
                                             $canRequestCorrection = $day['log']
                                                 && (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
                                                 && (!in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true) || $legacyApprovedWithoutCorrection);
+=======
+                                            $canRequestCorrection = $day['log']
+                                                && in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out'], true)
+                                                && !in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true);
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                             $correctionFormId = 'attendance-correction-' . ($day['log']->id ?? $day['date']->format('Ymd'));
                                         @endphp
                                         <tr class="{{ $rowClass }}">
@@ -372,6 +458,7 @@
                                                 <small class="text-muted">{{ $day['day_name'] }}</small>
                                             </td>
                                             <td class="text-center {{ $isLateTimeIn && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
+<<<<<<< HEAD
                                                 @if (!$isLeave && !$isLWOP && $canRequestCorrection)
                                                     @if (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
                                                         <label class="small d-block mb-1">Time-in</label>
@@ -390,6 +477,31 @@
                                                     <input form="{{ $correctionFormId }}" type="time" name="corrected_time_out" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_out?->format('H:i') }}" aria-label="Corrected time-out">
                                                 @else
                                                     {{ !$isLeave && !$isLWOP ? ($day['pm_out'] ?? '') : '--' }}
+=======
+                                                @if (!$isLeave && !$isLWOP)
+                                                    @if ($canRequestCorrection)
+                                                        @if ($day['log']->am_in && $isLateTimeIn)
+                                                            <input form="{{ $correctionFormId }}" type="time" name="corrected_time_in" class="form-control form-control-sm dtr-inline-time" value="{{ $day['log']->am_in?->format('H:i') }}" aria-label="Corrected time-in">
+                                                        @else
+                                                            <span>{{ $day['am_in'] ?? '--' }}</span>
+                                                        @endif
+                                                    @else
+                                                        <span>{{ $day['am_in'] ?? '--' }}</span>
+                                                    @endif
+                                                @else
+                                                    --
+                                                @endif
+                                            </td>
+                                            <td class="text-center {{ $isEarlyOut && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
+                                                @if (!$isLeave && !$isLWOP)
+                                                    @if ($canRequestCorrection && $day['log']->pm_out && $isEarlyOut)
+                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_time_out" class="form-control form-control-sm dtr-inline-time" value="{{ $day['log']->pm_out?->format('H:i') }}" aria-label="Corrected time-out">
+                                                    @else
+                                                        <span>{{ $day['pm_out'] ?? '--' }}</span>
+                                                    @endif
+                                                @else
+                                                    --
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                                 @endif
                                             </td>
                                             <td class="text-center" style="
@@ -405,6 +517,8 @@
                                                     background-color: #ff0000; color: #111; font-weight: 700;
                                                 @elseif ($isWeekend)
                                                     background-color: #d1d5db; color: #374151; font-weight: 700;
+                                                @elseif ($isPending)
+                                                    background-color: #e5e7eb; color: #4b5563; font-weight: 700;
                                                 @elseif ($isNoRecordYet)
                                                     background-color: transparent; color: transparent; font-weight: 700;
                                                 @else
@@ -431,6 +545,14 @@
                                                 @else
                                                     Present
                                                 @endif
+<<<<<<< HEAD
+=======
+                                                @if ($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true))
+                                                    <small class="d-block text-muted mt-1">Adjustment pending approval</small>
+                                                @elseif ($day['log'] && $day['log']->override_status === 'approved')
+                                                    <small class="d-block text-success mt-1">Adjusted to Present</small>
+                                                @endif
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                             </td>
                                             <td class="text-center">
                                                 @if ($canRequestCorrection)
@@ -461,6 +583,14 @@
             </div>
         </div>
     </div>
+
+    <script>
+        document.querySelectorAll('.dtr-inline-time').forEach((input) => {
+            input.addEventListener('change', () => {
+                input.form?.querySelector('[name="reason"]')?.focus();
+            });
+        });
+    </script>
 
     <!-- Remarks Section -->
     @if ($dtr->remarks)

@@ -5,10 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Models\DTR;
 use App\Models\EmployeeProfile;
 use App\Models\AttendanceLog;
+use App\Models\LeaveRequest;
 use App\Models\User;
 use App\Notifications\SystemNotification;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class DTRManagementController
 {
@@ -25,8 +29,11 @@ class DTRManagementController
         }
 
         $pendingQuery = DTR::query()->with('employeeProfile');
-        // Keep all approved DTRs visible as history, including those already linked to payroll.
-        $approvedQuery = DTR::where('status', 'approved')->with(['employeeProfile.branch', 'payrollEntry']);
+        // Keep approved DTRs visible as history, including DTRs already sent to the Finance Head.
+        $approvedStatuses = ($user->isBranchAdmin() || $user->isSuperAdmin() || $user->isFinanceHead())
+            ? ['approved', 'pending_finance_head']
+            : ['approved'];
+        $approvedQuery = DTR::whereIn('status', $approvedStatuses)->with(['employeeProfile.branch', 'payrollEntry']);
 
         if ($user->isBranchAdmin()) {
             $pendingQuery->where('status', 'submitted');
@@ -47,10 +54,15 @@ class DTRManagementController
         } elseif ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
             $ownEmployeeId = $financeProfile?->employee_profile_id;
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
 
-            if ($user->isFinanceHead() && $financeProfile?->branch_id) {
+            if ($user->isFinanceHead()) {
+                $pendingQuery->where('status', 'pending_finance_head');
+                $pendingQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
+                    $query->where('branch_id', $financeProfile?->branch_id ?? Auth::user()->branch_id ?? 1);
+                });
                 $approvedQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
-                    $query->where('branch_id', $financeProfile->branch_id);
+                    $query->where('branch_id', $financeProfile?->branch_id ?? Auth::user()->branch_id ?? 1);
                 });
             } elseif (!$ownEmployeeId) {
                 $pendingQuery->whereRaw('0 = 1');
@@ -72,13 +84,29 @@ class DTRManagementController
             ->paginate(20, ['*'], 'approved_dtr_page');
 
         $totalDTRsQuery = DTR::query();
-        $approvedDTRsCountQuery = DTR::where('status', 'approved');
+        $approvedDTRsCountQuery = DTR::whereIn('status', $approvedStatuses);
         $pendingCountQuery = DTR::query();
 
-        if ($user->isFinanceOfficer()) {
+        if ($user->isBranchAdmin()) {
+            $branchId = $user->getEffectiveBranchId();
+            if ($branchId) {
+                $totalDTRsQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
+                $approvedDTRsCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
+                $pendingCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))->where('status', 'submitted');
+            } else {
+                $totalDTRsQuery->whereRaw('0 = 1');
+                $approvedDTRsCountQuery->whereRaw('0 = 1');
+                $pendingCountQuery->whereRaw('0 = 1');
+            }
+        } elseif ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
             $ownEmployeeId = $financeProfile?->employee_profile_id;
-            if ($ownEmployeeId) {
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+            if ($user->isFinanceHead()) {
+                $totalDTRsQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
+                $approvedDTRsCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
+                $pendingCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))->where('status', 'pending_finance_head');
+            } elseif ($ownEmployeeId) {
                 $totalDTRsQuery->where('employee_profile_id', $ownEmployeeId);
                 $approvedDTRsCountQuery->where('employee_profile_id', $ownEmployeeId);
                 $pendingCountQuery->where('employee_profile_id', $ownEmployeeId)->where('status', 'approved');
@@ -93,7 +121,7 @@ class DTRManagementController
         $totalDTRs = $totalDTRsQuery->count();
         $approvedDTRsCount = $approvedDTRsCountQuery->count();
         $pendingCount = $user->isBranchAdmin()
-            ? DTR::where('status', 'submitted')->count()
+            ? $pendingCountQuery->count()
             : ($user->isFinanceOfficer() ? $pendingCountQuery->count() : DTR::where('status', 'pending_system_admin')->count());
         $rejectedDTRs = $user->isFinanceOfficer() ? 0 : DTR::where('status', 'rejected')->count();
 
@@ -107,6 +135,375 @@ class DTRManagementController
             'pendingCount',
             'rejectedDTRs',
             'canApprove'
+        ));
+    }
+
+    public function exportSubmittedExcel()
+    {
+        $user = Auth::user();
+
+        if (!$user->isBranchAdmin() && !$user->isSuperAdmin()) {
+            abort(403, 'Only Branch Heads and administrators can export submitted DTRs.');
+        }
+
+        $query = DTR::with(['employeeProfile.branch', 'employeeProfile.shift'])
+            ->orderBy('period_start')
+            ->orderBy('employee_profile_id');
+
+        if ($user->isBranchAdmin()) {
+            $branchId = $user->getEffectiveBranchId();
+            if ($branchId) {
+                $query->where('status', 'submitted')
+                    ->whereHas('employeeProfile', fn ($profileQuery) => $profileQuery->where('branch_id', $branchId));
+            } else {
+                $query->whereRaw('0 = 1');
+            }
+        } elseif ($user->isSuperAdmin()) {
+            $query->where('status', 'pending_system_admin');
+        } else {
+            $query->whereRaw('0 = 1');
+        }
+
+        $dtrs = $query->get();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+        $sheet->setTitle('DTR Table');
+
+        $sheet->setCellValue('A1', 'MOTHER THERESA COLEGIO GROUP OF SCHOOLS - DTR TABLE');
+        $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
+        $sheet->getStyle('A1')->getAlignment()->setHorizontal('center');
+
+        $periodHeaders = [];
+        $firstDtr = $dtrs->first();
+
+        if ($firstDtr) {
+            $current = $firstDtr->period_start->copy();
+            $end = $firstDtr->period_end->copy();
+
+            while ($current <= $end) {
+                if (!in_array($current->dayOfWeek, [0, 6], true)) {
+                    $periodHeaders[] = $current->copy();
+                }
+                $current->addDay();
+            }
+        }
+
+        $sheet->setCellValue('A3', 'Employee');
+        $sheet->setCellValue('B3', 'Employee No.');
+
+        $columnIndex = 3;
+        foreach ($periodHeaders as $headerDate) {
+            $startColumn = Coordinate::stringFromColumnIndex($columnIndex);
+            $endColumn = Coordinate::stringFromColumnIndex($columnIndex + 1);
+
+            $sheet->mergeCells($startColumn . '3:' . $endColumn . '3');
+            $sheet->setCellValue($startColumn . '3', $headerDate->format('m-d-Y'));
+            $sheet->setCellValue($startColumn . '4', 'TIME-IN');
+            $sheet->setCellValue($endColumn . '4', 'TIME-OUT');
+
+            $columnIndex += 2;
+        }
+
+        $lastHeaderColumn = Coordinate::stringFromColumnIndex($columnIndex - 1);
+        $sheet->mergeCells('A1:' . $lastHeaderColumn . '1');
+
+        $sheet->getStyle('A3:' . $lastHeaderColumn . '4')->getFont()->setBold(true);
+        $sheet->getStyle('A3:' . $lastHeaderColumn . '4')->getFill()
+            ->setFillType('solid')
+            ->getStartColor()
+            ->setRGB('D9EAF7');
+        $sheet->getStyle('A3:' . $lastHeaderColumn . '4')->getAlignment()->setWrapText(true);
+
+        $row = 5;
+        $redFontCells = [];
+
+        foreach ($dtrs as $dtr) {
+            $employee = $dtr->employeeProfile;
+            $logsByDate = $dtr->attendanceLogs()->keyBy(function ($log) {
+                return $log->attendance_date->format('Y-m-d');
+            });
+
+            $approvedLeaves = LeaveRequest::where('employee_profile_id', $dtr->employee_profile_id)
+                ->where('status', 'approved')
+                ->whereDate('start_date', '<=', $dtr->period_end)
+                ->whereDate('end_date', '>=', $dtr->period_start)
+                ->get();
+
+            $approvedLeaveByDate = [];
+            foreach ($approvedLeaves as $leave) {
+                $current = $leave->start_date->copy();
+                $end = $leave->end_date->copy();
+                while ($current <= $end) {
+                    $approvedLeaveByDate[$current->format('Y-m-d')] = $leave;
+                    $current->addDay();
+                }
+            }
+
+            $sheet->setCellValue('A' . $row, $employee?->first_name . ' ' . $employee?->last_name);
+            $sheet->setCellValue('B' . $row, $employee?->employee_number);
+
+            $columnIndex = 3;
+            foreach ($periodHeaders as $headerDate) {
+                $dateStr = $headerDate->format('Y-m-d');
+                $log = $logsByDate->get($dateStr);
+                $approvedLeave = $approvedLeaveByDate[$dateStr] ?? null;
+                $startColumn = Coordinate::stringFromColumnIndex($columnIndex);
+                $endColumn = Coordinate::stringFromColumnIndex($columnIndex + 1);
+
+                if ($approvedLeave) {
+                    $sheet->mergeCells($startColumn . $row . ':' . $endColumn . $row);
+                    $sheet->setCellValue($startColumn . $row, (bool) $approvedLeave->is_absent ? 'Leave Without Pay' : 'Paid Leave');
+                } elseif ($log) {
+                    $sheet->setCellValue($startColumn . $row, $log->am_in ? $log->am_in->format('h:i A') : '--');
+                    $sheet->setCellValue($endColumn . $row, $log->pm_out ? $log->pm_out->format('h:i A') : '--');
+
+                    $isLate = (int) ($log->late_minutes ?? 0) > 0;
+                    $isEarlyOut = $log->pm_out && $log->pm_out->lt($headerDate->copy()->setTime(17, 0, 0));
+
+                    if ($isLate) {
+                        $redFontCells[] = $startColumn . $row;
+                    }
+
+                    if ($isEarlyOut) {
+                        $redFontCells[] = $endColumn . $row;
+                    }
+                } else {
+                    $sheet->mergeCells($startColumn . $row . ':' . $endColumn . $row);
+                    $sheet->setCellValue($startColumn . $row, $headerDate->isPast() ? 'Absent' : 'Pending');
+                }
+
+                $columnIndex += 2;
+            }
+
+            $row++;
+        }
+
+        $lastColumn = $sheet->getHighestColumn();
+        $lastRow = $sheet->getHighestRow();
+
+        foreach (range('A', $lastColumn) as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
+        }
+
+        $sheet->getStyle('A3:' . $lastColumn . $lastRow)
+            ->applyFromArray([
+                'alignment' => [
+                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                    'wrapText' => true,
+                ],
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN,
+                        'color' => ['rgb' => '7F8C8D'],
+                    ],
+                ],
+            ]);
+
+        $sheet->getStyle('A3:' . $lastColumn . '4')
+            ->applyFromArray([
+                'font' => [
+                    'bold' => true,
+                ],
+                'fill' => [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => 'D9EAF7'],
+                ],
+                'alignment' => [
+                    'horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER,
+                    'vertical' => \PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER,
+                    'wrapText' => true,
+                ],
+            ]);
+
+        for ($row = 5; $row <= $lastRow; $row++) {
+            for ($column = 'A'; $column <= $lastColumn; $column++) {
+                $cell = $sheet->getCell($column . $row);
+                $value = $cell->getValue();
+
+                if (!is_string($value)) {
+                    continue;
+                }
+
+                $style = $sheet->getStyle($column . $row);
+
+                if (str_contains($value, 'Leave Without Pay')) {
+                    $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+                    $style->getFill()->getStartColor()->setRGB('5CCB5C');
+                    $style->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+                } elseif (str_contains($value, 'Paid Leave')) {
+                    $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+                    $style->getFill()->getStartColor()->setRGB('00B0F0');
+                    $style->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+                } elseif (str_contains($value, 'Absent')) {
+                    $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+                    $style->getFill()->getStartColor()->setRGB('FF0000');
+                    $style->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFFFFF'));
+                }
+            }
+        }
+
+        $sheet->getStyle('A5:' . $lastColumn . $lastRow)->getFont()->setBold(true);
+
+        foreach (array_unique($redFontCells) as $cell) {
+            $sheet->getStyle($cell)->applyFromArray([
+                'font' => [
+                    'color' => ['rgb' => 'FF0000'],
+                ],
+            ]);
+        }
+
+        $sheet->freezePane('A5');
+
+        $writer = new Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, 'submitted-dtrs-' . now()->format('Ymd-His') . '.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    public function submitAllToHr()
+    {
+        $user = Auth::user();
+        abort_unless($user->isBranchAdmin(), 403, 'Only the Branch Head can submit DTRs to HR.');
+
+        $branchId = $user->getEffectiveBranchId();
+        abort_unless($branchId, 422, 'Branch is not assigned.');
+
+        $dtrs = DTR::with('employeeProfile')
+            ->where('status', 'submitted')
+            ->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))
+            ->get();
+
+        if ($dtrs->isEmpty()) {
+            return back()->with('error', 'There are no submitted DTRs ready to send to HR.');
+        }
+
+        $dtrs->each(function (DTR $dtr) {
+            $dtr->update([
+                'status' => 'pending_system_admin',
+                'approved_by' => Auth::id(),
+                'approved_at' => now(),
+            ]);
+            $this->notifySystemReviewers($dtr);
+        });
+
+        return back()->with('success', $dtrs->count() . ' DTR(s) and the combined attendance report were submitted to HR for review.');
+    }
+
+    public function submitAllToFinanceHead()
+    {
+        $user = Auth::user();
+        abort_unless($user->isSuperAdmin(), 403, 'Only HR can submit DTRs to the Finance Head.');
+
+        $dtrs = DTR::with('employeeProfile')
+            ->where('status', 'pending_system_admin')
+            ->get();
+
+        if ($dtrs->isEmpty()) {
+            return back()->with('error', 'There are no DTRs awaiting HR review.');
+        }
+
+        $dtrs->each(function (DTR $dtr) {
+            $dtr->update(['status' => 'pending_finance_head']);
+        });
+
+        $dtrs->each(fn (DTR $dtr) => $this->notifyFinanceHeads($dtr));
+
+        return back()->with('success', $dtrs->count() . ' DTR(s) and the combined Excel report were submitted to the Finance Head.');
+    }
+
+    public function returnAllToBranchHead()
+    {
+        $user = Auth::user();
+        abort_unless($user->isSuperAdmin(), 403, 'Only HR can return DTRs to the Branch Head.');
+
+        $dtrs = DTR::with('employeeProfile')
+            ->where('status', 'pending_system_admin')
+            ->get();
+
+        if ($dtrs->isEmpty()) {
+            return back()->with('error', 'There are no DTRs awaiting HR review to return.');
+        }
+
+        $dtrs->each(function (DTR $dtr) {
+            $dtr->update([
+                'status' => 'submitted',
+                'approved_by' => null,
+                'approved_at' => null,
+            ]);
+            $this->notifyBranchReviewers($dtr);
+        });
+
+        return back()->with('success', $dtrs->count() . ' DTR(s) were returned to the Branch Head for review.');
+    }
+
+    public function computeDtr($dtrId)
+    {
+        $user = Auth::user();
+        abort_unless($user->isFinanceHead(), 403, 'Only the Finance Head can compute this DTR.');
+
+        $dtr = DTR::with('employeeProfile')->findOrFail($dtrId);
+        $financeProfile = $user->getFinanceProfile();
+        $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+        abort_unless($financeProfile && $dtr->employeeProfile?->branch_id === $branchId, 403);
+        abort_unless($dtr->status === 'pending_finance_head', 422, 'This DTR is not awaiting Finance Head review.');
+
+        $dtr->calculateTotals();
+        $dtr->approve($user->id, 'finance_head');
+        $dtr->employeeProfile?->user?->notify(new SystemNotification(
+            'DTR computed by Finance Head',
+            'Your DTR was reviewed and computed by the Finance Head.',
+            'dtr_computed',
+            route('employee.dtr.show', $dtr->id)
+        ));
+
+        return back()->with('success', 'DTR attendance and payroll totals computed successfully.');
+    }
+
+    public function attendanceManagementIndex()
+    {
+        $user = Auth::user();
+
+        if (!$user->isAdmin()) {
+            return redirect('/dashboard')->with('error', 'Unauthorized access');
+        }
+
+        if ($user->isBranchAdmin()) {
+            $branchId = $user->getEffectiveBranchId();
+            abort_unless($branchId, 422, 'Branch is not assigned.');
+
+            $pendingAdjustments = AttendanceLog::query()
+                ->with('employeeProfile.branch')
+                ->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))
+                ->where('override_status', 'pending_branch')
+                ->orderBy('attendance_date', 'desc')
+                ->orderByDesc('id')
+                ->paginate(20);
+
+            $pendingBranchCount = $pendingAdjustments->total();
+            $pendingSystemAdminCount = 0;
+        } elseif ($user->isSuperAdmin()) {
+            $pendingAdjustments = AttendanceLog::query()
+                ->with('employeeProfile.branch')
+                ->whereIn('override_status', ['pending_branch', 'pending_system_admin'])
+                ->orderBy('attendance_date', 'desc')
+                ->orderByDesc('id')
+                ->paginate(20);
+
+            $pendingBranchCount = AttendanceLog::where('override_status', 'pending_branch')->count();
+            $pendingSystemAdminCount = AttendanceLog::where('override_status', 'pending_system_admin')->count();
+        } else {
+            abort(403, 'You do not have access to attendance management.');
+        }
+
+        return view('admin.attendance-management.index', compact(
+            'pendingAdjustments',
+            'pendingBranchCount',
+            'pendingSystemAdminCount'
         ));
     }
 
@@ -125,8 +522,13 @@ class DTRManagementController
 
         if ($user->isFinanceOfficer()) {
             $financeProfile = $user->getFinanceProfile();
-            if (!$financeProfile || $dtr->employee_profile_id !== $financeProfile->employee_profile_id) {
-                return redirect('/dashboard')->with('error', 'You can only view your own DTR records.');
+            $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
+            $isOutsideBranch = !$financeProfile || $dtr->employeeProfile?->branch_id !== $branchId;
+            $canView = $user->isFinanceHead()
+                ? !$isOutsideBranch
+                : $dtr->employee_profile_id === $financeProfile?->employee_profile_id;
+            if (!$canView) {
+                return redirect('/dashboard')->with('error', 'You can only view DTR records in your assigned scope.');
             }
         }
         
@@ -142,21 +544,6 @@ class DTRManagementController
             ->get();
 
         $breakdown = $dtr->getCalculationBreakdown();
-        $adminDaysAbsent = 0;
-        $current = $dtr->period_start->copy();
-        while ($current <= $dtr->period_end) {
-            if (!$current->isWeekend()) {
-                $dateKey = $current->toDateString();
-                $hasLog = $attendanceLogs->contains(fn ($log) => $log->attendance_date->toDateString() === $dateKey);
-                $hasLeave = $approvedLeaves->contains(fn ($leave) => $current->betweenIncluded($leave->start_date, $leave->end_date));
-                if (!$hasLog && !$hasLeave) {
-                    $adminDaysAbsent++;
-                }
-            }
-            $current->addDay();
-        }
-
-        $adminDaysAbsent += $attendanceLogs->filter(fn ($log) => in_array(strtolower((string) $log->status), ['absent', 'a'], true))->count();
         $totalEarlyOutMinutes = $attendanceLogs->sum(function ($log) {
             if (!$log->pm_out) {
                 return 0;
@@ -175,7 +562,7 @@ class DTRManagementController
             'total_late_minutes' => $dtr->getTotalLateMinutes(),
             'total_early_out_minutes' => $totalEarlyOutMinutes,
             'days_present' => $breakdown['days_present'],
-            'days_absent' => $adminDaysAbsent,
+            'days_absent' => $breakdown['days_absent'],
             'total_paid_leave' => $breakdown['paid_leave'],
             'total_leave_without_pay' => $breakdown['leave_without_pay'],
             'working_days' => max(1, $breakdown['days_present'] + $breakdown['days_absent'] + $breakdown['paid_leave'] + $breakdown['leave_without_pay']),
@@ -221,6 +608,7 @@ class DTRManagementController
         }
 
         $dtr->approve($user->id, 'super_admin');
+        $this->notifyFinanceHeads($dtr);
 
         $dtr->employeeProfile?->user?->notify(new SystemNotification(
             'DTR approved',
@@ -291,10 +679,10 @@ class DTRManagementController
             $attendance->update(['override_status' => 'pending_system_admin', 'override_reviewed_by' => $user->id, 'override_reviewed_at' => now()]);
             $this->notifyAttendanceSystemReviewers($attendance, 'Attendance adjustment needs final approval', 'attendance_adjustment_pending_system');
 
-            return back()->with('success', 'Adjustment forwarded to HR/System Administrator.');
+            return back()->with('success', 'Adjustment forwarded to Super Admin for final approval.');
         }
 
-        if ($attendance->override_status !== 'pending_system_admin') {
+        if (!in_array($attendance->override_status, ['pending_system_admin'], true)) {
             return back()->with('error', 'This adjustment is not awaiting final review.');
         }
         if (!$attendance->corrected_time_in && !$attendance->corrected_pm_in && !$attendance->corrected_time_out) {
@@ -347,10 +735,25 @@ class DTRManagementController
             if (!$branchId || $attendance->employeeProfile?->branch_id !== $branchId) {
                 abort(403);
             }
+            if ($attendance->override_status !== 'pending_branch') {
+                return back()->with('error', 'This adjustment is not awaiting Branch Head review.');
+            }
         }
 
-        if (!in_array($attendance->override_status, ['pending_branch', 'pending_system_admin'], true)) {
-            return back()->with('error', 'This adjustment is no longer pending.');
+        if ($user->isBranchAdmin()) {
+            $attendance->update(['override_status' => 'rejected', 'override_reviewed_by' => $user->id, 'override_reviewed_at' => now()]);
+            $attendance->employeeProfile?->user?->notify(new SystemNotification(
+                'Attendance adjustment rejected',
+                'Your request to mark the attendance correction as Present was rejected by the Branch Admin.',
+                'attendance_adjustment_rejected',
+                route('employee.dtr.show', $this->dtrIdForAttendance($attendance))
+            ));
+
+            return back()->with('success', 'Attendance adjustment rejected.');
+        }
+
+        if ($attendance->override_status !== 'pending_system_admin') {
+            return back()->with('error', 'This adjustment is not awaiting final review.');
         }
 
         $attendance->update(['override_status' => 'rejected', 'override_reviewed_by' => $user->id, 'override_reviewed_at' => now()]);
@@ -397,6 +800,50 @@ class DTRManagementController
                 'DTR needs final approval',
                 'A DTR has been approved by the Branch Head and is waiting for final review.',
                 'dtr_pending_system',
+                route('admin.dtr.show', $dtr->id)
+            )));
+    }
+
+    private function notifyFinanceHeads(DTR $dtr): void
+    {
+        User::where('role', 'finance_head')
+            ->where('is_active', true)
+            ->get()
+            ->each(fn (User $financeHead) => $financeHead->notify(new SystemNotification(
+                'DTR ready for Finance Head computation',
+                'A DTR and the combined Excel report were submitted by HR for your attendance review and computation.',
+                'dtr_pending_finance_head',
+                route('admin.dtr.show', $dtr->id)
+            )));
+    }
+
+    private function notifyBranchReviewers(DTR $dtr): void
+    {
+        $branchId = $dtr->employeeProfile?->branch_id;
+
+        if (!$branchId) {
+            return;
+        }
+
+        User::where(function ($query) use ($branchId) {
+                $query->where(function ($branchQuery) use ($branchId) {
+                    $branchQuery->where('role', 'branch_head')
+                        ->whereHas('profile', fn ($profileQuery) => $profileQuery->where('branch_id', $branchId));
+                })->orWhere(function ($branchQuery) use ($branchId) {
+                    $branchQuery->where('role', 'admin')
+                        ->where('admin_type', 'branch_admin')
+                        ->where(function ($userQuery) use ($branchId) {
+                            $userQuery->where('branch_id', $branchId)
+                                ->orWhereHas('profile', fn ($profileQuery) => $profileQuery->where('branch_id', $branchId));
+                        });
+                });
+            })
+            ->where('is_active', true)
+            ->get()
+            ->each(fn (User $recipient) => $recipient->notify(new SystemNotification(
+                'DTR returned for Branch Head review',
+                'A DTR was returned by the System Administrator and needs Branch Head review again.',
+                'dtr_returned_branch',
                 route('admin.dtr.show', $dtr->id)
             )));
     }

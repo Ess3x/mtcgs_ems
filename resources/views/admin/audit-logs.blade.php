@@ -87,6 +87,17 @@
                     @endforeach
                 </select>
             </div>
+            <div class="col-md-3">
+                <label for="record_type" class="form-label">Record type</label>
+                <select id="record_type" name="record_type" class="form-select">
+                    <option value="">All record types</option>
+                    @foreach($recordTypes as $recordType)
+                        <option value="{{ $recordType }}" @selected(request('record_type') === $recordType)>
+                            {{ class_basename($recordType) }}
+                        </option>
+                    @endforeach
+                </select>
+            </div>
             <div class="col-md-2">
                 <label for="from" class="form-label">From</label>
                 <input id="from" type="date" name="from" class="form-control" value="{{ request('from') }}">
@@ -95,7 +106,7 @@
                 <label for="to" class="form-label">To</label>
                 <input id="to" type="date" name="to" class="form-control" value="{{ request('to') }}">
             </div>
-            <div class="col-md-3 d-flex gap-2">
+            <div class="col-md-2 d-flex gap-2">
                 <button class="btn btn-primary" type="submit"><i class="fas fa-filter me-1"></i>Filter</button>
                 <a class="btn btn-outline-secondary" href="{{ route('admin.audit-logs') }}">Clear</a>
             </div>
@@ -112,18 +123,25 @@
                         <th>Action</th>
                         <th>Record</th>
                         <th>Changes</th>
-                        <th>MAC / Device Address</th>
+                        <th>Actor / Device</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($logs as $log)
                         <tr>
                             <td class="text-nowrap">{{ $log->created_at->format('M d, Y h:i A') }}</td>
-                            <td>{{ $log->user?->name ?? 'System' }}</td>
+                            <td>
+                                {{ $log->user?->name ?? 'System' }}
+                                @if($log->user?->role)
+                                    <small class="d-block text-muted">{{ $log->user->role }}{{ $log->user->admin_type ? ' / ' . $log->user->admin_type : '' }}</small>
+                                @endif
+                            </td>
                             <td><span class="badge bg-{{ $log->action === 'deleted' ? 'danger' : ($log->action === 'created' ? 'success' : 'warning text-dark') }}">{{ ucfirst($log->action) }}</span></td>
                             <td>{{ class_basename($log->auditable_type) }} #{{ $log->auditable_id ?? 'new' }}</td>
                             <td>
-                                @php($changes = array_keys($log->new_values ?? $log->old_values ?? []))
+                                @php
+                                    $changes = array_keys($log->new_values ?? $log->old_values ?? []);
+                                @endphp
                                 <details>
                                     <summary>{{ count($changes) }} field(s)</summary>
                                     <small class="d-block mt-2">{{ implode(', ', $changes) ?: 'No field details' }}</small>
@@ -135,7 +153,48 @@
                                     @endif
                                 </details>
                             </td>
-                            <td>{{ $log->ip_address ?? 'N/A' }}</td>
+                            <td>
+                                @php
+                                    $auditValues = $log->audit_context ?? array_merge($log->old_values ?? [], $log->new_values ?? []);
+                                    $deviceFields = [
+                                        'device_id' => 'Device ID',
+                                        'device_serial' => 'Serial',
+                                        'device_serial_number' => 'Serial',
+                                        'location' => 'Location',
+                                        'device_mac_address' => 'MAC',
+                                        'mac_address' => 'MAC',
+                                        'wifi_mac' => 'Wi-Fi MAC',
+                                        'wifi_mac_address' => 'Wi-Fi MAC',
+                                        'laptop_mac' => 'Laptop MAC',
+                                        'laptop_mac_address' => 'Laptop MAC',
+                                    ];
+                                @endphp
+                                <small class="d-block"><strong>IP:</strong> {{ $log->ip_address ?? 'N/A' }}</small>
+                                @foreach($deviceFields as $field => $label)
+                                    @if(!empty($auditValues[$field]))
+                                        <small class="d-block text-muted"><strong>{{ $label }}:</strong> {{ $auditValues[$field] }}</small>
+                                    @endif
+                                @endforeach
+                                @if(!empty($auditValues['attendance_devices']))
+                                    <details class="mt-1">
+                                        <summary>Attendance devices</summary>
+                                        @foreach($auditValues['attendance_devices'] as $deviceIndex => $attendanceDevice)
+                                            <small class="d-block mt-1"><strong>Record {{ $deviceIndex + 1 }}</strong></small>
+                                            @foreach($deviceFields as $field => $label)
+                                                @if(!empty($attendanceDevice[$field]))
+                                                    <small class="d-block text-muted">{{ $label }}: {{ $attendanceDevice[$field] }}</small>
+                                                @endif
+                                            @endforeach
+                                        @endforeach
+                                    </details>
+                                @endif
+                                @if(!collect($deviceFields)->keys()->contains(fn ($field) => !empty($auditValues[$field])))
+                                    <small class="d-block text-muted">Device details: N/A</small>
+                                @endif
+                                @if($log->url)
+                                    <details class="mt-1"><summary>Request</summary><small>{{ $log->url }}</small></details>
+                                @endif
+                            </td>
                         </tr>
                     @empty
                         <tr><td colspan="6" class="text-center text-muted py-4">No audit records found.</td></tr>

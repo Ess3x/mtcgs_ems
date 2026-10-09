@@ -160,6 +160,11 @@
         font-size: 0.7rem !important;
         padding: 0.2rem !important;
         font-weight: 500 !important;
+        color: #1f2937 !important;
+    }
+
+    .fc .fc-daygrid-day {
+        border-color: #cbd5e1 !important;
     }
     
     .fc .fc-daygrid-day-frame {
@@ -187,7 +192,14 @@
     }
     
     .fc .fc-day-today {
-        background-color: rgba(13, 110, 253, 0.05) !important;
+        background-color: #dbeafe !important;
+        box-shadow: inset 0 0 0 2px #2563eb;
+    }
+
+    .fc .fc-day-today .fc-daygrid-day-number {
+        color: #1d4ed8 !important;
+        font-size: 0.85rem !important;
+        font-weight: 800 !important;
     }
     
     .card {

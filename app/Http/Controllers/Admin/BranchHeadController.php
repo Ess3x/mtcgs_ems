@@ -24,10 +24,11 @@ class BranchHeadController extends Controller
         }
     }
 
-    public function index()
+    public function index(Request $request)
     {
         $this->authorizeBranchHeadManagement();
 
+        $selectedBranch = $request->integer('branch_id') ?: null;
         $branchHeads = AdminProfile::with('user', 'branch')
             ->where(function ($query) {
                 $query->where('admin_level', 'branch_admin')
@@ -36,8 +37,10 @@ class BranchHeadController extends Controller
                             ->where('admin_type', 'branch_admin');
                     });
             })
+                    ->when($selectedBranch, fn ($query) => $query->where('branch_id', $selectedBranch))
             ->orderBy('created_at', 'desc')
-            ->paginate(15);
+                    ->paginate(15)
+                    ->withQueryString();
 
         $branches = Branch::orderBy('branch_name')->get();
 
@@ -47,9 +50,9 @@ class BranchHeadController extends Controller
                     $userQuery->where('role', 'admin')
                         ->where('admin_type', 'branch_admin');
                 });
-        })->count();
+        })->when($selectedBranch, fn ($query) => $query->where('branch_id', $selectedBranch))->count();
 
-        return view('admin.branch-heads.index', compact('branchHeads', 'branches', 'totalBranchHeads'));
+        return view('admin.branch-heads.index', compact('branchHeads', 'branches', 'totalBranchHeads', 'selectedBranch'));
     }
 
     public function create()

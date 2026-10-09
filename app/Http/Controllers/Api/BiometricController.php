@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\EmployeeProfile;
 use App\Models\FinanceProfile;
 use App\Models\AdminProfile;
+use App\Models\BranchHeadProfile;
 use App\Models\AttendanceLog;
 use App\Models\Device;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class BiometricController extends Controller
 {
@@ -29,6 +32,14 @@ class BiometricController extends Controller
         }
 
         $employee = EmployeeProfile::findOrFail($request->employee_id);
+        if ($user->role === 'admin' && $user->admin_type === 'branch_admin'
+            && (int) $employee->branch_id !== (int) $user->getEffectiveBranchId()) {
+            return response()->json(['error' => 'You can only register fingerprints for employees in your branch.'], 403);
+        }
+        $duplicate = $this->findFingerprintOwner($request->fingerprint_data, $employee);
+        if ($duplicate) {
+            return $this->duplicateFingerprintResponse($duplicate);
+        }
         $employee->fingerprint_template = $this->appendFingerprintTemplate(
             $employee->fingerprint_template,
             $request->fingerprint_data
@@ -69,6 +80,11 @@ class BiometricController extends Controller
             $request->fingerprint_data
         );
         $employee->is_fingerprint_registered = true;
+
+        $duplicate = $this->findFingerprintOwner($request->fingerprint_data, $employee);
+        if ($duplicate) {
+            return $this->duplicateFingerprintResponse($duplicate);
+        }
         $employee->save();
 
         return response()->json([
@@ -93,6 +109,10 @@ class BiometricController extends Controller
         
         $profile = $user->getAdminProfile();
         if ($profile) {
+            $duplicate = $this->findFingerprintOwner($request->fingerprint_data, $profile);
+            if ($duplicate) {
+                return $this->duplicateFingerprintResponse($duplicate);
+            }
             $profile->fingerprint_template = $this->appendFingerprintTemplate(
                 $profile->fingerprint_template,
                 $request->fingerprint_data
@@ -124,6 +144,10 @@ class BiometricController extends Controller
         
         $profile = $user->getFinanceProfile();
         if ($profile) {
+            $duplicate = $this->findFingerprintOwner($request->fingerprint_data, $profile);
+            if ($duplicate) {
+                return $this->duplicateFingerprintResponse($duplicate);
+            }
             $profile->fingerprint_template = $this->appendFingerprintTemplate(
                 $profile->fingerprint_template,
                 $request->fingerprint_data
@@ -140,26 +164,240 @@ class BiometricController extends Controller
         return response()->json(['error' => 'Finance profile not found'], 404);
     }
     
+    private function logBiometricAttempt(Request $request, string $action, array $details = [], ?string $error = null): void
+    {
+        AuditLog::create([
+            'user_id' => auth()->id(),
+            'action' => $action,
+            'auditable_type' => 'biometric_request',
+            'auditable_id' => $request->input('employee_id') ?? $request->input('employee_number') ?? null,
+            'old_values' => $error ? ['error' => $error] : null,
+            'new_values' => [
+                'employee_number' => $request->input('employee_number'),
+                'device_serial' => $request->input('device_serial'),
+                'wifi_mac' => $request->input('wifi_mac') ?: $request->input('mac_address'),
+                'laptop_mac' => $request->input('laptop_mac'),
+                'timestamp' => $request->input('timestamp'),
+                'nonce' => $request->input('nonce'),
+                'details' => $details,
+            ],
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'url' => $request->fullUrl(),
+        ]);
+    }
+
+    private function findFingerprintOwner(string $incomingTemplate, $ignoreProfile = null): ?array
+    {
+        foreach ([EmployeeProfile::class, FinanceProfile::class, AdminProfile::class, BranchHeadProfile::class] as $profileType) {
+            foreach ($profileType::query()->whereNotNull('fingerprint_template')->where('fingerprint_template', '!=', '')->get() as $profile) {
+                if ($ignoreProfile
+                    && get_class($ignoreProfile) === get_class($profile)
+                    && (int) $ignoreProfile->id === (int) $profile->id) {
+                    continue;
+                }
+
+                if ($this->templatesMatch($profile->fingerprint_template, $incomingTemplate)) {
+                    return [
+                        'name' => trim(($profile->first_name ?? '') . ' ' . ($profile->last_name ?? '')) ?: 'another user',
+                        'employee_number' => $profile->employee_number ?? null,
+                    ];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private function duplicateFingerprintResponse(array $duplicate)
+    {
+        $identifier = $duplicate['employee_number'] ? ' #' . $duplicate['employee_number'] : '';
+
+        return response()->json([
+            'success' => false,
+            'error' => 'Fingerprint already registered.',
+            'message' => 'This fingerprint is already registered to ' . $duplicate['name'] . $identifier . '.',
+        ], 409);
+    }
+
+    private function verifyRequestSignature(Request $request): bool
+    {
+        if (!$request->filled('signature')) {
+            return false;
+        }
+
+        $secret = config('app.biometric_device_secret') ?? env('BIOMETRIC_DEVICE_SECRET') ?? env('APP_KEY');
+        if (blank($secret)) {
+            return false;
+        }
+
+        $payload = [
+            $request->input('employee_id'),
+            $request->input('employee_number'),
+            $request->input('device_serial'),
+            $request->input('wifi_mac'),
+            $request->input('device_id'),
+            $request->input('mac_address'),
+            $request->input('timestamp'),
+            $request->input('nonce'),
+        ];
+
+        $signature = strtolower(trim((string) $request->input('signature')));
+        $expected = hash_hmac('sha256', implode('|', $payload), $secret);
+
+        return hash_equals($expected, $signature);
+    }
+
+    private function validateTimestamp(Request $request): ?string
+    {
+        if (!$request->filled('timestamp')) {
+            return null;
+        }
+
+        try {
+            $timestamp = \Carbon\Carbon::parse($request->input('timestamp'));
+            $diffSeconds = abs($timestamp->diffInSeconds(now(), false));
+
+            if ($diffSeconds > 300) {
+                return 'Timestamp is too old or too far in the future.';
+            }
+        } catch (\Throwable $exception) {
+            return 'Invalid timestamp format.';
+        }
+
+        return null;
+    }
+
+    private function validateDeviceIdentity(Request $request): ?array
+    {
+        $deviceSerial = $request->input('device_serial');
+        $wifiMac = $request->input('wifi_mac') ?: $request->input('mac_address');
+        $deviceId = $request->input('device_id');
+
+        if (!$request->filled('device_serial') && !filled($wifiMac) && empty($deviceId)) {
+            return ['error' => 'Biometric device identity is required for attendance verification.', 'code' => 401];
+        }
+
+        $timestampError = $this->validateTimestamp($request);
+        if ($timestampError) {
+            $this->logBiometricAttempt($request, 'biometric_timestamp_invalid', [], $timestampError);
+            return ['error' => $timestampError, 'code' => 401];
+        }
+
+        if (!$this->verifyRequestSignature($request)) {
+            $this->logBiometricAttempt($request, 'biometric_signature_invalid', [], 'Invalid biometric request signature.');
+            return ['error' => 'Invalid biometric request signature.', 'code' => 401];
+        }
+
+        $device = null;
+        if ($request->filled('device_serial')) {
+            $device = Device::getBySerialNumber($deviceSerial);
+            if (!$device) {
+                $this->logBiometricAttempt($request, 'biometric_device_serial_invalid', [], 'Device serial not registered or inactive.');
+                return ['error' => 'Device serial not registered or inactive.', 'code' => 401];
+            }
+        }
+
+        if ($device === null && $request->filled('device_id')) {
+            $device = Device::where('status', 'active')->find($request->input('device_id'));
+        }
+
+        if ($device) {
+            $candidateMacs = array_filter([
+                $request->input('mac_address'),
+                $request->input('wifi_mac'),
+            ]);
+
+            foreach ($candidateMacs as $candidateMac) {
+                if (!$device->isMacAllowed($candidateMac)) {
+                    $this->logBiometricAttempt($request, 'biometric_mac_invalid', ['device_id' => $device->id], 'This device MAC is not authorized for this biometric terminal.');
+                    return ['error' => 'This device MAC is not authorized for this biometric terminal.', 'code' => 401];
+                }
+            }
+        } elseif ($request->filled('mac_address') || $request->filled('wifi_mac')) {
+            $candidateMacs = array_filter([
+                $request->input('mac_address'),
+                $request->input('wifi_mac'),
+            ]);
+            $device = collect($candidateMacs)
+                ->map(fn ($mac) => Device::getByMacAddress($mac))
+                ->filter()
+                ->first();
+            if (!$device) {
+                $this->logBiometricAttempt($request, 'biometric_mac_invalid', [], 'Device not authorized. MAC address not registered.');
+                return ['error' => 'Device not authorized. MAC address not registered.', 'code' => 401];
+            }
+        }
+
+        if (!$device) {
+            $this->logBiometricAttempt($request, 'biometric_device_invalid', [], 'No active registered biometric device matched this request.');
+            return ['error' => 'No active registered biometric device matched this request.', 'code' => 401];
+        }
+
+        return ['device' => $device];
+    }
+
+    private function resolveDeviceFromRequest(Request $request): ?Device
+    {
+        if ($request->filled('device_serial')) {
+            return Device::getBySerialNumber($request->input('device_serial'));
+        }
+
+        if ($request->filled('device_id')) {
+            $deviceId = (string) $request->input('device_id');
+            $device = ctype_digit($deviceId)
+                ? Device::where('status', 'active')->find((int) $deviceId)
+                : null;
+
+            return $device ?: Device::getByDeviceIdentifier($deviceId) ?: Device::getByMacAddress($deviceId);
+        }
+
+        foreach (array_filter([
+            $request->input('mac_address'),
+            $request->input('wifi_mac'),
+        ]) as $macAddress) {
+            $device = Device::getByMacAddress($macAddress);
+            if ($device) {
+                return $device;
+            }
+        }
+
+        return null;
+    }
+
+    private function attachDeviceMetadata(AttendanceLog $attendance, ?Device $device): void
+    {
+        if (!$device) {
+            return;
+        }
+
+        $attendance->device_id = $device->id;
+        $attendance->device_mac_address = $device->mac_address;
+        $attendance->device_serial_number = $device->serial_number;
+        $attendance->location = $device->location;
+        $device->updateLastUsed();
+    }
+
     // Process attendance for admin (same as employee)
     public function processAdminAttendance(Request $request)
     {
         $request->validate([
             'fingerprint_data' => 'required|string',
+            'device_serial' => 'nullable|string',
             'mac_address' => 'nullable|string',
+            'wifi_mac' => 'nullable|string',
+            'laptop_mac' => 'nullable|string',
+            'timestamp' => 'nullable|string',
+            'nonce' => 'nullable|string',
+            'signature' => 'nullable|string',
         ]);
-        
-        // Validate MAC address if provided
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            
-            if (!$device) {
-                return response()->json([
-                    'error' => 'Device not authorized. MAC address not registered.',
-                    'mac_address' => $macAddress,
-                ], 401);
-            }
+
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['error' => $deviceValidation['error']], $deviceValidation['code']);
         }
+
+        $device = $deviceValidation['device'] ?? null;
         
         // Find admin by fingerprint
         $incomingFingerprint = $this->fingerprintBytes($request->fingerprint_data);
@@ -255,15 +493,7 @@ class BiometricController extends Controller
         $attendance->verification_method = 'fingerprint';
         
         // Store MAC address if provided (Admin Attendance)
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            if ($device) {
-                $attendance->device_mac_address = $device->mac_address;
-                $attendance->device_id = $device->id;
-                $device->updateLastUsed();
-            }
-        }
+        $this->attachDeviceMetadata($attendance, $device ?: $this->resolveDeviceFromRequest($request));
         
         $attendance->save();
 
@@ -282,6 +512,9 @@ class BiometricController extends Controller
                 'pm_out' => $attendance->pm_out ? date('h:i A', strtotime($attendance->pm_out)) : '--',
                 'late_minutes' => $attendance->late_minutes,
                 'overtime_hours' => $attendance->overtime_hours,
+                'device_id' => $attendance->device_id,
+                'device_serial_number' => $attendance->device_serial_number,
+                'location' => $attendance->location,
             ]
         ]);
     }
@@ -292,17 +525,24 @@ class BiometricController extends Controller
         $request->validate([
             'fingerprint_data' => 'required|string',
             'mac_address' => 'nullable|string',
+            'wifi_mac' => 'nullable|string',
+            'laptop_mac' => 'nullable|string',
+            'device_serial' => 'nullable|string',
+            'device_id' => 'nullable|string',
+            'attendance_timestamp' => 'nullable|date',
+            'gps_latitude' => 'nullable|numeric|between:-90,90',
+            'gps_longitude' => 'nullable|numeric|between:-180,180',
+            'gps_accuracy' => 'nullable|numeric|min:0',
+            'gps_timestamp' => 'nullable|date',
         ]);
         
         // Validate MAC address if provided
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            
+        $device = $this->resolveDeviceFromRequest($request);
+        if ($request->filled('mac_address') || $request->filled('wifi_mac') || $request->filled('laptop_mac') || $request->filled('device_serial') || $request->filled('device_id')) {
             if (!$device) {
                 return response()->json([
                     'error' => 'Device not authorized. MAC address not registered.',
-                    'mac_address' => $macAddress,
+                    'mac_address' => Device::normalizeMacAddress($request->input('mac_address') ?: $request->input('wifi_mac')),
                 ], 401);
             }
         }
@@ -409,15 +649,11 @@ class BiometricController extends Controller
         $attendance->verification_method = 'fingerprint';
         
         // Store MAC address if provided (Finance Attendance)
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            if ($device) {
-                $attendance->device_mac_address = $device->mac_address;
-                $attendance->device_id = $device->id;
-                $device->updateLastUsed();
-            }
-        }
+        $this->attachDeviceMetadata($attendance, $device);
+        $attendance->gps_latitude = $request->input('gps_latitude');
+        $attendance->gps_longitude = $request->input('gps_longitude');
+        $attendance->gps_accuracy = $request->input('gps_accuracy');
+        $attendance->gps_timestamp = $request->input('gps_timestamp');
         
         $attendance->save();
 
@@ -436,6 +672,9 @@ class BiometricController extends Controller
                 'pm_out' => $attendance->pm_out ? date('h:i A', strtotime($attendance->pm_out)) : '--',
                 'late_minutes' => $attendance->late_minutes,
                 'overtime_hours' => $attendance->overtime_hours,
+                'device_id' => $attendance->device_id,
+                'device_serial_number' => $attendance->device_serial_number,
+                'location' => $attendance->location,
             ]
         ]);
     }
@@ -590,11 +829,13 @@ class BiometricController extends Controller
         return preg_replace('/\s+/', '', $template) ?? '';
     }
 
-    private function scheduledTime($profile, string $field, int $fallbackHour): \Carbon\Carbon
+    private function scheduledTime($profile, string $field, int $fallbackHour, ?\Carbon\Carbon $date = null): \Carbon\Carbon
     {
+        $date = $date?->copy() ?: \Carbon\Carbon::today();
+
         return $profile->shift
-            ? \Carbon\Carbon::today()->setTimeFromTimeString($profile->shift->{$field})
-            : \Carbon\Carbon::today()->setTime($fallbackHour, 0, 0);
+            ? $date->setTimeFromTimeString($profile->shift->{$field})
+            : $date->setTime($fallbackHour, 0, 0);
     }
 
     private function fingerprintBytes($value): string
@@ -625,6 +866,27 @@ class BiometricController extends Controller
     private function fingerprintBase64($value): string
     {
         return base64_encode($this->fingerprintBytes($value));
+    }
+
+    private function preventDuplicateAction(AttendanceLog $attendance, string $action, string $message): ?string
+    {
+        if ($action === 'AM In' && !empty($attendance->am_in)) {
+            return 'AM In already recorded for today.';
+        }
+
+        if ($action === 'AM Out' && !empty($attendance->am_out)) {
+            return 'AM Out already recorded for today.';
+        }
+
+        if ($action === 'PM In' && !empty($attendance->pm_in)) {
+            return 'PM In already recorded for today.';
+        }
+
+        if ($action === 'PM Out' && !empty($attendance->pm_out)) {
+            return 'PM Out already recorded for today.';
+        }
+
+        return null;
     }
 
     private function attendanceBlockedReason($employee, $date): ?string
@@ -681,17 +943,19 @@ class BiometricController extends Controller
         $request->validate([
             'fingerprint_data' => 'required|string',
             'mac_address' => 'nullable|string',
+            'wifi_mac' => 'nullable|string',
+            'laptop_mac' => 'nullable|string',
+            'device_serial' => 'nullable|string',
+            'device_id' => 'nullable|integer',
         ]);
         
         // Validate MAC address if provided
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            
+        $device = $this->resolveDeviceFromRequest($request);
+        if ($request->filled('mac_address') || $request->filled('wifi_mac') || $request->filled('laptop_mac') || $request->filled('device_serial') || $request->filled('device_id')) {
             if (!$device) {
                 return response()->json([
                     'error' => 'Device not authorized. MAC address not registered.',
-                    'mac_address' => $macAddress,
+                    'mac_address' => Device::normalizeMacAddress($request->input('mac_address') ?: $request->input('wifi_mac')),
                 ], 401);
             }
         }
@@ -732,6 +996,12 @@ class BiometricController extends Controller
         $action = '';
         
         if (!$attendance->am_in && $currentHour >= 6 && $currentHour < 12) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'AM In', 'AM In');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->am_in = $now;
             $standardIn = $this->scheduledTime($employee, 'start_time', 7);
             if ($now >= $standardIn) {
@@ -746,16 +1016,34 @@ class BiometricController extends Controller
             $action = 'AM In';
         }
         elseif ($attendance->am_in && !$attendance->am_out && $currentHour >= 12 && $currentHour < 14) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'AM Out', 'AM Out');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->am_out = $now;
             $message = "Lunch Out recorded";
             $action = 'AM Out';
         }
         elseif ($attendance->am_out && !$attendance->pm_in && $currentHour >= 13 && $currentHour < 16) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'PM In', 'PM In');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->pm_in = $now;
             $message = "PM In recorded";
             $action = 'PM In';
         }
         elseif (($attendance->pm_in || $attendance->am_in) && !$attendance->pm_out && $currentHour >= 16) {
+            $duplicateReason = $this->preventDuplicateAction($attendance, 'PM Out', 'PM Out');
+            if ($duplicateReason) {
+                $this->logBiometricAttempt($request, 'biometric_duplicate_clock_in', ['employee_id' => $employee->id, 'attendance_date' => $attendance->attendance_date], $duplicateReason);
+                return response()->json(['error' => $duplicateReason, 'action' => 'duplicate'], 409);
+            }
+
             $attendance->pm_out = $now;
             $standardOut = $this->scheduledTime($employee, 'end_time', 17);
             $timeoutStatus = $this->evaluateTimeOutStatus($now, $standardOut);
@@ -792,15 +1080,7 @@ class BiometricController extends Controller
         $attendance->verification_method = 'fingerprint';
         
         // Store MAC address if provided (Employee Attendance)
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            if ($device) {
-                $attendance->device_mac_address = $device->mac_address;
-                $attendance->device_id = $device->id;
-                $device->updateLastUsed();
-            }
-        }
+        $this->attachDeviceMetadata($attendance, $device);
         
         $attendance->save();
 
@@ -820,11 +1100,14 @@ class BiometricController extends Controller
                 'pm_out' => $attendance->pm_out ? date('h:i A', strtotime($attendance->pm_out)) : '--',
                 'late_minutes' => $attendance->late_minutes,
                 'overtime_hours' => $attendance->overtime_hours,
+                'device_id' => $attendance->device_id,
+                'device_serial_number' => $attendance->device_serial_number,
+                'location' => $attendance->location,
             ]
         ]);
     }
     
-    // Get employees without fingerprint (for Admin/Super Admin/Finance Head)
+    // Get employees with their fingerprint status (for Admin/Super Admin/Finance Head)
     public function getUnregisteredEmployees(Request $request)
     {
         $user = auth()->user();
@@ -837,22 +1120,34 @@ class BiometricController extends Controller
         if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $profile = $user->getFinanceProfile();
             $branchId = $profile->branch_id ?? null;
+        } elseif ($user->role === 'admin' && $user->admin_type === 'branch_admin') {
+            $branchId = $user->getEffectiveBranchId();
+            if (!$branchId) {
+                return response()->json(['error' => 'Branch admin has no assigned branch.'], 403);
+            }
         }
         
-        $query = EmployeeProfile::where('is_fingerprint_registered', false);
+        $query = EmployeeProfile::query();
 
         if (in_array($user->role, ['finance_officer', 'finance_head'], true)) {
             $query->where('branch_id', $branchId);
         } elseif ($user->role === 'admin' && $user->admin_type === 'branch_admin') {
-            $query->where('branch_id', $user->profile->branch_id);
+            $query->where('branch_id', $branchId);
         }
 
-        $employees = $query->get()->map(function($employee) {
+        $employees = $query->with('branch')->get()->map(function($employee) {
             return [
                 'id' => $employee->id,
+                'profile_type' => 'employee',
                 'name' => $employee->first_name . ' ' . $employee->last_name,
                 'employee_number' => $employee->employee_number,
                 'position' => $employee->position,
+                'branch_id' => $employee->branch_id,
+                'branch_name' => $employee->branch?->branch_name ?? 'Unknown Branch',
+                'profile_photo_url' => $employee->profile_photo && Storage::disk('public')->exists($employee->profile_photo)
+                    ? asset('storage/' . ltrim($employee->profile_photo, '/') . '?v=' . $employee->updated_at?->timestamp)
+                    : null,
+                'is_fingerprint_registered' => (bool) $employee->is_fingerprint_registered,
             ];
         });
         
@@ -863,28 +1158,31 @@ class BiometricController extends Controller
         ]);
     }
     
-    // Get unregistered finance officers (for Super Admin)
+    // Get finance officers with their fingerprint status (for Super Admin)
     public function getUnregisteredFinanceOfficers(Request $request)
     {
         $user = auth()->user();
         
-        // Only Super Admin can view unregistered finance officers
         if (!$user->isSuperAdmin()) {
             return response()->json(['error' => 'Only Super Admin can access this'], 403);
         }
         
-        $financeOfficers = FinanceProfile::where('is_fingerprint_registered', false)
-            ->with('user')
-            ->get()
-            ->map(function($finance) {
-                return [
-                    'id' => $finance->id,
-                    'name' => $finance->first_name . ' ' . $finance->last_name,
-                    'email' => $finance->user->email ?? 'N/A',
-                    'employee_number' => $finance->employee_number,
-                    'branch_id' => $finance->branch_id,
-                ];
-            });
+        $financeOfficers = FinanceProfile::with(['user', 'branch'])->get()->map(function($finance) {
+            return [
+                'id' => $finance->id,
+                'profile_type' => 'financeprofile',
+                'name' => $finance->first_name . ' ' . $finance->last_name,
+                'email' => $finance->user->email ?? 'N/A',
+                'employee_number' => $finance->employee_number,
+                'branch_id' => $finance->branch_id,
+                'branch_name' => $finance->branch?->branch_name ?? 'Unknown Branch',
+                'profile_photo_url' => $finance->profile_photo && Storage::disk('public')->exists($finance->profile_photo)
+                    ? asset('storage/' . ltrim($finance->profile_photo, '/') . '?v=' . $finance->updated_at?->timestamp)
+                    : null,
+                'role' => $finance->user?->role ?? 'finance_officer',
+                'is_fingerprint_registered' => (bool) $finance->is_fingerprint_registered,
+            ];
+        });
         
         return response()->json([
             'success' => true,
@@ -893,28 +1191,38 @@ class BiometricController extends Controller
         ]);
     }
     
-    // Get unregistered admins (for Super Admin)
+    // Get admins with their fingerprint status (for Super Admin)
     public function getUnregisteredAdmins(Request $request)
     {
         $user = auth()->user();
         
-        // Only Super Admin can view unregistered admins
         if (!$user->isSuperAdmin()) {
             return response()->json(['error' => 'Only Super Admin can access this'], 403);
         }
         
-        $admins = AdminProfile::where('is_fingerprint_registered', false)
-            ->with('user')
-            ->get()
-            ->map(function($admin) {
-                return [
-                    'id' => $admin->id,
-                    'name' => $admin->first_name . ' ' . $admin->last_name,
-                    'email' => $admin->user->email ?? 'N/A',
-                    'employee_number' => $admin->employee_number,
-                    'admin_level' => $admin->admin_level,
-                ];
-            });
+        $admins = AdminProfile::with(['user', 'branch'])->get()->map(function($admin) {
+            $userAdminType = $admin->user?->admin_type ?? $admin->admin_level ?? 'admin';
+            $adminLevel = $admin->admin_level ?? $userAdminType;
+            $isBranchAdmin = strtolower((string) ($userAdminType ?: $adminLevel)) === 'branch_admin'
+                || strtolower((string) ($admin->admin_level ?? '')) === 'branch_admin';
+
+            return [
+                'id' => $admin->id,
+                'profile_type' => 'adminprofile',
+                'name' => $admin->first_name . ' ' . $admin->last_name,
+                'email' => $admin->user->email ?? 'N/A',
+                'employee_number' => $admin->employee_number,
+                'admin_level' => $adminLevel,
+                'admin_type' => $userAdminType,
+                'branch_name' => $isBranchAdmin ? ($admin->branch?->branch_name ?? 'Unknown Branch') : null,
+                'profile_photo_url' => $admin->profile_photo && Storage::disk('public')->exists($admin->profile_photo)
+                    ? asset('storage/' . ltrim($admin->profile_photo, '/') . '?v=' . $admin->updated_at?->timestamp)
+                    : null,
+                'role' => $admin->user?->role ?? 'admin',
+                'is_branch_admin' => $isBranchAdmin,
+                'is_fingerprint_registered' => (bool) $admin->is_fingerprint_registered,
+            ];
+        });
         
         return response()->json([
             'success' => true,
@@ -1000,6 +1308,17 @@ class BiometricController extends Controller
                 'You need to register your fingerprint'
         ]);
     }
+
+    public function getBridgeStatus(Request $request)
+    {
+        $path = env('MTCGS_ENROLL_EXE') ?: env('MTCGS_ENROLL_EXE', '');
+
+        return response()->json([
+            'success' => true,
+            'enrollment_exe' => $path,
+            'registry_file' => base_path('biometric/mtcgs-enroll.reg'),
+        ]);
+    }
     
     // Get Finance Officer's fingerprint status
     public function getFinanceStatus(Request $request)
@@ -1058,20 +1377,22 @@ class BiometricController extends Controller
             'fingerprint_data' => 'required|string',
             'action' => 'required|in:TIME-IN,TIME-OUT',
             'mac_address' => 'nullable|string',
+            'wifi_mac' => 'nullable|string',
+            'laptop_mac' => 'nullable|string',
+            'device_serial' => 'nullable|string',
+            'device_id' => 'nullable|string',
+            'attendance_timestamp' => 'nullable|date',
+            'gps_latitude' => 'nullable|numeric|between:-90,90',
+            'gps_longitude' => 'nullable|numeric|between:-180,180',
+            'gps_accuracy' => 'nullable|numeric|min:0',
+            'gps_timestamp' => 'nullable|date',
         ]);
-        
-        // Validate MAC address if provided
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            
-            if (!$device) {
-                return response()->json([
-                    'error' => 'Device not authorized. MAC address not registered.',
-                    'mac_address' => $macAddress,
-                ], 401);
-            }
+
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['error' => $deviceValidation['error']], $deviceValidation['code']);
         }
+        $device = $deviceValidation['device'];
         
         // Find employee by fingerprint
         $incomingFingerprint = $this->fingerprintBytes($request->fingerprint_data);
@@ -1086,72 +1407,76 @@ class BiometricController extends Controller
             return response()->json(['error' => 'Fingerprint not recognized'], 401);
         }
 
-        $attendanceDate = today();
-        $nonWorkingDayResponse = $this->attendanceBlockedReason($employee, $attendanceDate);
+        if ($device->branch_id === null) {
+            return response()->json([
+                'success' => false,
+                'error' => 'This device is not assigned to a branch and cannot record attendance.',
+                'message' => 'This device is not assigned to a branch and cannot record attendance.',
+            ], 403);
+        }
+
+        if ((int) $device->branch_id !== (int) $employee->branch_id) {
+            $message = 'This device belongs to ' . $device->branch?->branch_name
+                . '. This user cannot record attendance on this device.';
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'message' => $message,
+            ], 403);
+        }
+
+    $rawTimestamp = $request->input('attendance_timestamp') ?: $request->input('timestamp');
+        $now = $rawTimestamp ? \Carbon\Carbon::parse($rawTimestamp)->setTimezone(config('app.timezone')) : now();
+        $attendanceDate = $now->copy()->toDateString();
+        $nonWorkingDayResponse = $this->attendanceBlockedReason($employee, $now->copy()->toDateString());
         if ($nonWorkingDayResponse) {
             return response()->json([
                 'success' => false,
                 'error' => $nonWorkingDayResponse,
                 'message' => $nonWorkingDayResponse,
                 'attendance_blocked' => true,
-                'date' => $attendanceDate->toDateString(),
+                'date' => $attendanceDate,
             ], 403);
         }
-        
+
         $attendance = AttendanceLog::firstOrNew([
             'employee_profile_id' => $employee->id,
             'attendance_date' => $attendanceDate,
         ]);
-        
+
         $attendance->employee_profile_id = $employee->id;
         $attendance->employee_id = $employee->id;
         $attendance->branch_id = $employee->branch_id;
         $attendance->attendance_date = $attendanceDate;
         
-        $now = now();
         $requestedAction = strtoupper(trim($request->input('action')));
 
         if ($requestedAction === 'TIME-IN') {
-            if ($attendance->am_in) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'TIME-IN already recorded for today.',
-                    'action' => 'TIME-IN',
-                ], 409);
-            }
-
             $attendance->am_in = $now;
-            $standardIn = $this->scheduledTime($employee, 'start_time', 7);
+            $standardIn = $this->scheduledTime($employee, 'start_time', 7, $now);
             if ($now >= $standardIn) {
                 $lateMinutes = $standardIn->diffInMinutes($now);
                 $attendance->late_minutes = $lateMinutes;
                 $attendance->status = 'late';
-                $message = "TIME-IN recorded (LATE by {$lateMinutes} minutes)";
+                $message = "TIME-IN updated (LATE by {$lateMinutes} minutes)";
             } else {
                 $attendance->status = 'present';
-                $message = "TIME-IN recorded (On time)";
+                $message = "TIME-IN updated (On time)";
             }
             $action = 'TIME-IN';
         } else {
-            if ($attendance->pm_out) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'TIME-OUT already recorded for today.',
-                    'action' => 'TIME-OUT',
-                ], 409);
-            }
-
             $attendance->pm_out = $now;
-            $standardOut = $this->scheduledTime($employee, 'end_time', 17);
+            $standardOut = $this->scheduledTime($employee, 'end_time', 17, $now);
             $timeoutStatus = $this->evaluateTimeOutStatus($now, $standardOut);
             $attendance->overtime_hours = $timeoutStatus['overtime_hours'];
 
             if ($timeoutStatus['is_early_out']) {
-                $message = "TIME-OUT recorded (EARLY OUT by {$timeoutStatus['early_out_minutes']} minutes)";
+                $message = "TIME-OUT updated (EARLY OUT by {$timeoutStatus['early_out_minutes']} minutes)";
             } elseif ($timeoutStatus['overtime_hours'] > 0) {
-                $message = "TIME-OUT recorded (OVERTIME: {$attendance->overtime_hours} hours)";
+                $message = "TIME-OUT updated (OVERTIME: {$attendance->overtime_hours} hours)";
             } else {
-                $message = 'TIME-OUT recorded';
+                $message = 'TIME-OUT updated';
             }
 
             $attendance->status = $attendance->status === 'late' ? 'late' : 'present';
@@ -1172,15 +1497,11 @@ class BiometricController extends Controller
         
         $attendance->verification_method = 'fingerprint';
         
-        if ($request->filled('mac_address')) {
-            $macAddress = Device::normalizeMacAddress($request->mac_address);
-            $device = Device::getByMacAddress($macAddress);
-            if ($device) {
-                $attendance->device_mac_address = $device->mac_address;
-                $attendance->device_id = $device->id;
-                $device->updateLastUsed();
-            }
-        }
+        $this->attachDeviceMetadata($attendance, $device);
+        $attendance->gps_latitude = $request->input('gps_latitude');
+        $attendance->gps_longitude = $request->input('gps_longitude');
+        $attendance->gps_accuracy = $request->input('gps_accuracy');
+        $attendance->gps_timestamp = $request->input('gps_timestamp');
         
         $attendance->save();
 
@@ -1311,14 +1632,48 @@ class BiometricController extends Controller
             'first_name' => 'nullable|string',
             'last_name' => 'nullable|string',
             'email' => 'nullable|string',
+            'branch' => 'nullable|string|max:255',
             'finger_name' => 'nullable|string|max:30',
+            'device_serial' => 'nullable|string|max:100',
+            'mac_address' => 'nullable|string|max:100',
+            'device_id' => 'nullable|string|max:100',
+            'location' => 'nullable|string|max:255',
         ]);
 
+        $device = $this->resolveDeviceFromRequest($request);
+        if (!$device) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Enrollment device is not registered or inactive.',
+            ], 401);
+        }
+
+        if ($device->branch_id === null) {
+            $this->clearFingerprintTempCache($request);
+            return response()->json([
+                'success' => false,
+                'message' => 'This enrollment device is not assigned to a branch.',
+            ], 403);
+        }
+
         $fingerprintTemplate = $this->normalizeFingerprintTemplate($request->fingerprint_data);
+        $fingerprintBytes = $this->fingerprintBytes($fingerprintTemplate);
+        $decodedTemplate = base64_decode($fingerprintTemplate, true);
+        if ($fingerprintBytes === ''
+            || strlen($fingerprintTemplate) % 4 !== 0
+            || !preg_match('/^[A-Za-z0-9+\/]*={0,2}$/', $fingerprintTemplate)
+            || $decodedTemplate === false
+            || $decodedTemplate === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'The fingerprint template is empty or unreadable.',
+            ], 422);
+        }
         $employeeNumber = trim((string) ($request->employee_number ?? ''));
         $employeeNumber = $employeeNumber !== '' ? $employeeNumber : 'latest';
 
         $profile = null;
+        $hadExistingFingerprint = false;
         if ($request->filled('employee_number')) {
             $profile = EmployeeProfile::where('employee_number', $employeeNumber)->first();
             if (!$profile) {
@@ -1341,14 +1696,50 @@ class BiometricController extends Controller
             }
 
             if ($profile) {
-                $profile->fingerprint_template = $this->appendFingerprintTemplate(
-                    $profile->fingerprint_template,
-                    $fingerprintTemplate
-                );
-                $profile->is_fingerprint_registered = true;
-                $profile->save();
+                $hadExistingFingerprint = !empty($profile->fingerprint_template)
+                    || (bool) $profile->is_fingerprint_registered;
             }
+
         }
+
+        $requestedBranchName = strtolower(trim((string) $request->input('branch')));
+        $deviceBranchName = strtolower(trim((string) $device->branch?->branch_name));
+        $profileBranchId = $profile?->branch_id;
+
+        if ($profile && ($profileBranchId === null || (int) $profileBranchId !== (int) $device->branch_id)) {
+            $this->clearFingerprintTempCache($request);
+            return response()->json([
+                'success' => false,
+                'message' => 'This device belongs to ' . $device->branch?->branch_name . ' branch and this user cannot enroll here.',
+            ], 403);
+        }
+
+        if (!$profile && ($requestedBranchName === '' || $deviceBranchName !== $requestedBranchName)) {
+            $this->clearFingerprintTempCache($request);
+            return response()->json([
+                'success' => false,
+                'message' => 'This enrollment device is restricted to ' . $device->branch?->branch_name . '.',
+            ], 403);
+        }
+
+        $duplicate = $this->findFingerprintOwner($fingerprintTemplate, $profile);
+        if ($duplicate) {
+            return $this->duplicateFingerprintResponse($duplicate);
+        }
+
+        if ($profile) {
+            $profile->fingerprint_template = $this->appendFingerprintTemplate(
+                $profile->fingerprint_template,
+                $fingerprintTemplate
+            );
+            $profile->is_fingerprint_registered = true;
+            $profile->save();
+        }
+
+        $action = $hadExistingFingerprint ? 'updated' : 'registered';
+        $fingerprintCount = $profile
+            ? count($this->fingerprintTemplateList($profile->fingerprint_template))
+            : 1;
 
         $payload = [
             'fingerprint_data' => $fingerprintTemplate,
@@ -1357,6 +1748,12 @@ class BiometricController extends Controller
             'last_name' => $request->last_name,
             'email' => $request->email,
             'finger_name' => $request->finger_name,
+            'device_serial' => $request->device_serial,
+            'mac_address' => $request->mac_address,
+            'device_id' => $request->device_id,
+            'location' => $request->location,
+            'action' => $action,
+            'fingerprint_count' => $fingerprintCount,
             'timestamp' => now(),
         ];
 
@@ -1370,11 +1767,26 @@ class BiometricController extends Controller
             'success' => true,
             'message' => $request->filled('employee_number')
                 ? ($profile
-                    ? 'Fingerprint registered in database for employee #' . $employeeNumber
+                    ? ($action === 'updated'
+                        ? 'Fingerprint updated in database for employee #' . $employeeNumber
+                        : 'Fingerprint registered in database for employee #' . $employeeNumber)
                     : 'Fingerprint data received for employee #' . $employeeNumber)
                 : 'Fingerprint data received and stored as latest temporary record.',
             'database_saved' => (bool) $profile,
+            'action' => $action,
+            'finger_name' => $request->input('finger_name'),
+            'fingerprint_count' => $fingerprintCount,
         ]);
+    }
+
+    private function clearFingerprintTempCache(Request $request): void
+    {
+        cache()->forget('fingerprint_temp_latest');
+
+        $employeeNumber = trim((string) $request->input('employee_number'));
+        if ($employeeNumber !== '') {
+            cache()->forget("fingerprint_temp_{$employeeNumber}");
+        }
     }
 
     public function getFingerprintTemp(Request $request)

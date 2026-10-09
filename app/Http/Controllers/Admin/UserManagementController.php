@@ -126,8 +126,10 @@ class UserManagementController extends Controller
 
         if ($role === 'finance') {
             $request->validate([
-                'status' => 'nullable|in:New Hire,Regular,1-2 Years in Service,3+ Years of Service',
+                'status' => 'nullable|in:New Hire,1 Year of Service,3+ Years of Service,Regular,1-2 Years in Service',
                 'date_hired' => 'nullable|date',
+                'date_of_birth' => 'nullable|date|before_or_equal:today',
+                'gender' => 'nullable|in:Male,Female,Other',
                 'fingerprint_data' => 'nullable|string',
             ]);
         }
@@ -189,6 +191,8 @@ class UserManagementController extends Controller
                 'can_process_payroll' => $request->has('can_process_payroll'),
                 'status' => $request->status ?? $profile->status,
                 'date_hired' => $request->date_hired ? $request->date_hired : $profile->date_hired,
+                'date_of_birth' => $request->date_of_birth ?: optional($profile->employeeProfile)->date_of_birth?->format('Y-m-d'),
+                'gender' => $request->gender,
                 'fingerprint_template' => $jsonSafeFingerprint ?? $fingerprintTemplate,
                 'is_fingerprint_registered' => $isFingerprintRegistered,
             ];
@@ -201,6 +205,8 @@ class UserManagementController extends Controller
                     'can_process_payroll' => $request->has('can_process_payroll'),
                     'status' => $request->status ?? $profile->status,
                     'date_hired' => $request->date_hired ? $request->date_hired : $profile->date_hired,
+                    'date_of_birth' => $request->date_of_birth,
+                    'gender' => $request->gender,
                     'fingerprint_template' => $jsonSafeFingerprint ?? $fingerprintTemplate,
                     'is_fingerprint_registered' => $isFingerprintRegistered,
                     'pending_changes' => $financeChanges,
@@ -249,6 +255,10 @@ class UserManagementController extends Controller
                 'date_hired' => $request->date_hired ? $request->date_hired : $profile->date_hired,
                 'fingerprint_template' => $fingerprintTemplate,
                 'is_fingerprint_registered' => $isFingerprintRegistered,
+            ]);
+            $profile->employeeProfile?->update([
+                'date_of_birth' => $request->date_of_birth,
+                'gender' => $request->gender,
             ]);
             if ($user) {
                 $profile->user->update([
@@ -357,6 +367,8 @@ class UserManagementController extends Controller
                 'position' => $changes['position'],
                 'status' => $approvedStatus,
                 'date_hired' => $approvedDateHired,
+                'date_of_birth' => $changes['date_of_birth'] ?? $profile->employeeProfile->date_of_birth,
+                'gender' => $changes['gender'] ?? $profile->employeeProfile->gender,
                 'branch_id' => $profile->branch_id,
             ]);
 

@@ -14,7 +14,7 @@
 
     <div class="card">
         <div class="card-body">
-            <form action="{{ route('admin.devices.update', $device) }}" method="POST">
+            <form action="{{ route('admin.devices.update', $device) }}" method="POST" data-device-form>
                 @csrf
                 @method('PUT')
 
@@ -25,9 +25,19 @@
                     </div>
 
                     <div class="col-md-6">
-                        <label for="mac_address" class="form-label">MAC Address</label>
-                        <input type="text" name="mac_address" id="mac_address" class="form-control" value="{{ $device->formatted_mac_address }}" readonly aria-readonly="true" tabindex="-1">
-                        <small class="text-muted">MAC address is locked and cannot be changed after registration.</small>
+                        <label for="mac_address" class="form-label">Device MAC Address</label>
+                        <input type="text" name="mac_address" id="mac_address" class="form-control" value="{{ old('mac_address', $device->formatted_mac_address) }}" placeholder="00:1A:2B:3C:4D:5E" required pattern="^(?:[A-Fa-f0-9]{2}[:-]?){5}[A-Fa-f0-9]{2}$">
+                        <small class="text-muted">This single MAC value is used for device and Wi-Fi identification.</small>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="serial_number" class="form-label">Scanner Serial Number</label>
+                        <input type="text" name="serial_number" id="serial_number" class="form-control" value="{{ old('serial_number', $device->serial_number) }}" placeholder="S/N from fingerprint scanner">
+                    </div>
+
+                    <div class="col-md-6">
+                        <label for="laptop_mac_address" class="form-label">Device ID</label>
+                        <input type="text" name="laptop_mac_address" id="laptop_mac_address" class="form-control" value="{{ old('laptop_mac_address', $device->laptop_mac_address) }}" placeholder="Optional device ID">
                     </div>
 
                     <div class="col-md-4">
@@ -60,7 +70,33 @@
 
                     <div class="col-12">
                         <label for="location" class="form-label">Location</label>
-                        <input type="text" name="location" id="location" class="form-control" value="{{ old('location', $device->location) }}" placeholder="Ground Floor, Enrollment Office, etc.">
+                        <input type="text" name="location" id="location" class="form-control" value="{{ old('location', $device->location ?: 'School') }}" placeholder="School">
+                    </div>
+
+                    <div class="col-12">
+                        <label for="address" class="form-label">School Address</label>
+                        <input type="text" name="address" id="address" class="form-control" value="{{ old('address', $device->address ?: 'San Nicolas, Iriga City, Camarines Sur') }}" placeholder="School address">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="latitude" class="form-label">School Latitude</label>
+                        <input type="number" step="0.0000001" name="latitude" id="latitude" class="form-control" value="{{ old('latitude', $device->latitude ?: '13.433153') }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="longitude" class="form-label">School Longitude</label>
+                        <input type="number" step="0.0000001" name="longitude" id="longitude" class="form-control" value="{{ old('longitude', $device->longitude ?: '123.411049') }}">
+                    </div>
+
+                    <div class="col-md-4">
+                        <label for="radius_meters" class="form-label">Allowed Radius (meters)</label>
+                        <input type="number" name="radius_meters" id="radius_meters" class="form-control" value="{{ old('radius_meters', $device->radius_meters ?: 100) }}" min="1" max="10000">
+                    </div>
+
+                    <div class="col-12 form-check ms-2 mt-2">
+                        <input type="hidden" name="location_check_enabled" value="0">
+                        <input type="checkbox" name="location_check_enabled" id="location_check_enabled" class="form-check-input" value="1" {{ old('location_check_enabled', $device->location_check_enabled) ? 'checked' : '' }}>
+                        <label for="location_check_enabled" class="form-check-label">Enable school location check</label>
                     </div>
 
                     <div class="col-12">
@@ -78,3 +114,27 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+document.querySelector('[data-device-form]')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submitButton = form.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    try {
+        const response = await fetch(form.action, { method: 'PUT', headers: { Accept: 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: new FormData(form) });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(Object.values(payload.errors || {}).flat()[0] || payload.message || 'Unable to update device.');
+        alert(payload.message);
+        window.location.href = '{{ route('admin.devices.index') }}';
+    } catch (error) { alert(error.message); } finally { submitButton.disabled = false; }
+});
+document.querySelector('#branch_id')?.addEventListener('change', async (event) => {
+    if (!event.target.value) return;
+    const response = await fetch('{{ url('/admin/devices/branches') }}/' + event.target.value, { headers: { Accept: 'application/json' } });
+    const payload = await response.json();
+    if (payload.success && payload.branch.address) document.querySelector('#address').value = payload.branch.address;
+});
+</script>
+@endpush

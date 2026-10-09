@@ -8,6 +8,8 @@ class EmployeeScheduleController extends Controller
 {
     public function index()
     {
+        abort_unless(Auth::user()?->role === 'employee', 403, 'Only employees can access their schedule.');
+
         $profile = Auth::user()->getEmployeeProfile();
 
         if (!$profile) {

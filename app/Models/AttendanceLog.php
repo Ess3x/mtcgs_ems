@@ -11,8 +11,9 @@ class AttendanceLog extends Model
     protected $fillable = [
         'employee_id', 'employee_profile_id', 'branch_id', 'attendance_date',
         'am_in', 'am_out', 'break_in', 'break_out', 'pm_in', 'pm_out',
-        'status', 'late_minutes', 'overtime_hours', 'verification_method', 'override_status',
-        'override_reason', 'corrected_time_in', 'corrected_pm_in', 'corrected_time_out', 'override_requested_by', 'override_reviewed_by', 'override_reviewed_at'
+        'status', 'late_minutes', 'overtime_hours', 'verification_method', 'device_mac_address', 'device_id', 'device_serial_number', 'location', 'override_status',
+        'override_reason', 'corrected_time_in', 'corrected_pm_in', 'corrected_time_out', 'override_requested_by', 'override_reviewed_by', 'override_reviewed_at',
+        'gps_latitude', 'gps_longitude', 'gps_accuracy', 'gps_timestamp'
     ];
     
     protected $casts = [
@@ -27,6 +28,7 @@ class AttendanceLog extends Model
         'corrected_time_in' => 'datetime',
         'corrected_pm_in' => 'datetime',
         'corrected_time_out' => 'datetime',
+        'gps_timestamp' => 'datetime',
     ];
     
     public function employeeProfile()
@@ -34,18 +36,28 @@ class AttendanceLog extends Model
         return $this->belongsTo(EmployeeProfile::class, 'employee_profile_id');
     }
 
+    public function device()
+    {
+        return $this->belongsTo(Device::class, 'device_id');
+    }
+
     public function getDtrStatus(): string
     {
-        if ($this->override_status === 'approved') {
-            return 'Present';
-        }
-
         $rawStatus = strtolower(trim((string) $this->status));
         if (in_array($rawStatus, ['leave', 'leave_paid', 'on leave'], true)) {
             return 'Leave';
         }
         if (in_array($rawStatus, ['absent', 'a'], true)) {
             return 'Absent';
+        }
+
+        $hasAnyAttendanceTime = (bool) ($this->am_in || $this->am_out || $this->pm_in || $this->pm_out);
+        if (!$hasAnyAttendanceTime) {
+            return 'Pending';
+        }
+
+        if ($this->override_status === 'approved') {
+            return 'Present';
         }
 
         $hasMorning = (bool) $this->am_in;

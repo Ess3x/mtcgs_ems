@@ -118,6 +118,7 @@ class DTR extends Model
         });
         $workingDayService = app(\App\Services\WorkingDayService::class);
         $branchId = $this->employeeProfile?->branch_id;
+        $today = Carbon::today();
 
         $daysPresent = 0;
         $daysAbsent = 0;
@@ -157,14 +158,11 @@ class DTR extends Model
                     $leaveWithoutPayDays++;
                 } elseif ($approvedLeave) {
                     $paidLeaveDays++;
-                } elseif (
-                    !$log
-                    && $this->status === 'approved'
-                ) {
-                    $daysAbsent++;
                 } elseif ($log && in_array($logStatus, ['leave', 'leave_paid', 'on leave'])) {
                     $paidLeaveDays++;
                 } elseif ($log && in_array($logStatus, ['absent', 'a'])) {
+                    $daysAbsent++;
+                } elseif ((!$log || !($log->am_in || $log->am_out || $log->pm_in || $log->pm_out)) && $current->lt($today)) {
                     $daysAbsent++;
                 } elseif ($log) {
                     $daysPresent++;
@@ -395,6 +393,11 @@ class DTR extends Model
         return $this->status === 'pending_system_admin';
     }
 
+    public function isVisibleToFinanceHead()
+    {
+        return $this->status === 'pending_finance_head';
+    }
+
     /**
      * Whether this DTR should be visible to finance staff for payroll preparation.
      */
@@ -424,6 +427,8 @@ class DTR extends Model
         if ($this->status === 'submitted' && $approverRole === 'branch_admin') {
             $this->status = 'pending_system_admin';
         } elseif ($this->status === 'pending_system_admin' && in_array($approverRole, ['super_admin', 'system_admin'], true)) {
+            $this->status = 'pending_finance_head';
+        } elseif ($this->status === 'pending_finance_head' && $approverRole === 'finance_head') {
             $this->status = 'approved';
         } elseif ($this->status !== 'approved') {
             $this->status = 'approved';
