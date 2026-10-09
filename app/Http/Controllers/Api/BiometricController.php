@@ -10,6 +10,7 @@ use App\Models\BranchHeadProfile;
 use App\Models\AttendanceLog;
 use App\Models\Device;
 use App\Models\AuditLog;
+use App\Services\BiometricDeviceAuthenticator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -220,149 +221,26 @@ class BiometricController extends Controller
         ], 409);
     }
 
-    private function verifyRequestSignature(Request $request): bool
-    {
-        if (!$request->filled('signature')) {
-            return false;
-        }
-
-        $secret = config('app.biometric_device_secret') ?? env('BIOMETRIC_DEVICE_SECRET') ?? env('APP_KEY');
-        if (blank($secret)) {
-            return false;
-        }
-
-        $payload = [
-            $request->input('employee_id'),
-            $request->input('employee_number'),
-            $request->input('device_serial'),
-            $request->input('wifi_mac'),
-            $request->input('device_id'),
-            $request->input('mac_address'),
-            $request->input('timestamp'),
-            $request->input('nonce'),
-        ];
-
-        $signature = strtolower(trim((string) $request->input('signature')));
-        $expected = hash_hmac('sha256', implode('|', $payload), $secret);
-
-        return hash_equals($expected, $signature);
-    }
-
-    private function validateTimestamp(Request $request): ?string
-    {
-        if (!$request->filled('timestamp')) {
-            return null;
-        }
-
-        try {
-            $timestamp = \Carbon\Carbon::parse($request->input('timestamp'));
-            $diffSeconds = abs($timestamp->diffInSeconds(now(), false));
-
-            if ($diffSeconds > 300) {
-                return 'Timestamp is too old or too far in the future.';
-            }
-        } catch (\Throwable $exception) {
-            return 'Invalid timestamp format.';
-        }
-
-        return null;
-    }
-
     private function validateDeviceIdentity(Request $request): ?array
     {
-        $deviceSerial = $request->input('device_serial');
-        $wifiMac = $request->input('wifi_mac') ?: $request->input('mac_address');
-        $deviceId = $request->input('device_id');
-
-        if (!$request->filled('device_serial') && !filled($wifiMac) && empty($deviceId)) {
-            return ['error' => 'Biometric device identity is required for attendance verification.', 'code' => 401];
-        }
-
-        $timestampError = $this->validateTimestamp($request);
-        if ($timestampError) {
-            $this->logBiometricAttempt($request, 'biometric_timestamp_invalid', [], $timestampError);
-            return ['error' => $timestampError, 'code' => 401];
-        }
-
-        if (!$this->verifyRequestSignature($request)) {
-            $this->logBiometricAttempt($request, 'biometric_signature_invalid', [], 'Invalid biometric request signature.');
-            return ['error' => 'Invalid biometric request signature.', 'code' => 401];
-        }
-
-        $device = null;
-        if ($request->filled('device_serial')) {
-            $device = Device::getBySerialNumber($deviceSerial);
-            if (!$device) {
-                $this->logBiometricAttempt($request, 'biometric_device_serial_invalid', [], 'Device serial not registered or inactive.');
-                return ['error' => 'Device serial not registered or inactive.', 'code' => 401];
-            }
-        }
-
-        if ($device === null && $request->filled('device_id')) {
-            $device = Device::where('status', 'active')->find($request->input('device_id'));
-        }
-
-        if ($device) {
-            $candidateMacs = array_filter([
-                $request->input('mac_address'),
-                $request->input('wifi_mac'),
-            ]);
-
-            foreach ($candidateMacs as $candidateMac) {
-                if (!$device->isMacAllowed($candidateMac)) {
-                    $this->logBiometricAttempt($request, 'biometric_mac_invalid', ['device_id' => $device->id], 'This device MAC is not authorized for this biometric terminal.');
-                    return ['error' => 'This device MAC is not authorized for this biometric terminal.', 'code' => 401];
-                }
-            }
-        } elseif ($request->filled('mac_address') || $request->filled('wifi_mac')) {
-            $candidateMacs = array_filter([
-                $request->input('mac_address'),
-                $request->input('wifi_mac'),
-            ]);
-            $device = collect($candidateMacs)
-                ->map(fn ($mac) => Device::getByMacAddress($mac))
-                ->filter()
-                ->first();
-            if (!$device) {
-                $this->logBiometricAttempt($request, 'biometric_mac_invalid', [], 'Device not authorized. MAC address not registered.');
-                return ['error' => 'Device not authorized. MAC address not registered.', 'code' => 401];
-            }
-        }
-
-        if (!$device) {
-            $this->logBiometricAttempt($request, 'biometric_device_invalid', [], 'No active registered biometric device matched this request.');
-            return ['error' => 'No active registered biometric device matched this request.', 'code' => 401];
-        }
-
-        return ['device' => $device];
+        return app(BiometricDeviceAuthenticator::class)->authenticate($request);
     }
 
     private function resolveDeviceFromRequest(Request $request): ?Device
     {
-        if ($request->filled('device_serial')) {
-            return Device::getBySerialNumber($request->input('device_serial'));
+        $serial = Device::normalizeSerialNumber($request->input('device_serial'));
+        $macAddress = Device::normalizeMacAddress($request->input('mac_address'));
+
+        if ($serial === '' || strlen($macAddress) !== 12) {
+            return null;
         }
 
-        if ($request->filled('device_id')) {
-            $deviceId = (string) $request->input('device_id');
-            $device = ctype_digit($deviceId)
-                ? Device::where('status', 'active')->find((int) $deviceId)
-                : null;
-
-            return $device ?: Device::getByDeviceIdentifier($deviceId) ?: Device::getByMacAddress($deviceId);
+        $device = Device::getBySerialNumber($serial);
+        if (!$device || !hash_equals(Device::normalizeMacAddress($device->mac_address), $macAddress)) {
+            return null;
         }
 
-        foreach (array_filter([
-            $request->input('mac_address'),
-            $request->input('wifi_mac'),
-        ]) as $macAddress) {
-            $device = Device::getByMacAddress($macAddress);
-            if ($device) {
-                return $device;
-            }
-        }
-
-        return null;
+        return $device;
     }
 
     private function attachDeviceMetadata(AttendanceLog $attendance, ?Device $device): void
@@ -697,9 +575,19 @@ class BiometricController extends Controller
             'fingerprint_data' => 'required|string',
         ]);
 
-        $scannedTemplate = $this->fingerprintBytes($request->fingerprint_data);
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['success' => false, 'message' => $deviceValidation['error']], $deviceValidation['code']);
+        }
 
-        $profile = EmployeeProfile::where(function ($query) {
+        $device = $deviceValidation['device'];
+        if ($device->branch_id === null) {
+            return response()->json(['success' => false, 'message' => 'This device is not assigned to a branch.'], 403);
+        }
+
+        $scannedTemplate = $this->fingerprintBytes($request->fingerprint_data);
+        $profile = EmployeeProfile::where('branch_id', $device->branch_id)
+            ->where(function ($query) {
                 $query->where('is_fingerprint_registered', true)
                     ->orWhere(function ($subQuery) {
                         $subQuery->whereNotNull('fingerprint_template')
@@ -709,7 +597,8 @@ class BiometricController extends Controller
             })->get()->first(fn ($item) => $this->templatesMatch($item->fingerprint_template, $scannedTemplate));
 
         if (!$profile) {
-            $profile = FinanceProfile::where(function ($query) {
+            $profile = FinanceProfile::where('branch_id', $device->branch_id)
+                ->where(function ($query) {
                     $query->where('is_fingerprint_registered', true)
                         ->orWhere(function ($subQuery) {
                             $subQuery->whereNotNull('fingerprint_template')
@@ -720,7 +609,8 @@ class BiometricController extends Controller
         }
 
         if (!$profile) {
-            $profile = AdminProfile::where(function ($query) {
+            $profile = AdminProfile::where('branch_id', $device->branch_id)
+                ->where(function ($query) {
                     $query->where('is_fingerprint_registered', true)
                         ->orWhere(function ($subQuery) {
                             $subQuery->whereNotNull('fingerprint_template')
@@ -1448,14 +1338,16 @@ class BiometricController extends Controller
     {
         $validated = $request->validate([
             'device_serial' => 'required|string',
+            'mac_address' => 'required|string',
             'start_date' => 'required|date',
             'end_date' => 'required|date|after_or_equal:start_date',
         ]);
 
-        $device = Device::getBySerialNumber($validated['device_serial']);
-        if (!$device) {
-            return response()->json(['success' => false, 'message' => 'Device serial not registered or inactive.'], 401);
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['success' => false, 'message' => $deviceValidation['error']], $deviceValidation['code']);
         }
+        $device = $deviceValidation['device'];
 
         $startDate = \Carbon\Carbon::parse($validated['start_date'])->startOfDay();
         $endDate = \Carbon\Carbon::parse($validated['end_date'])->startOfDay();
@@ -1661,7 +1553,18 @@ class BiometricController extends Controller
             'action' => 'required|in:TIME-IN,TIME-OUT',
         ]);
 
-        $employee = EmployeeProfile::where('employee_number', trim($request->employee_number))->first();
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['success' => false, 'message' => $deviceValidation['error']], $deviceValidation['code']);
+        }
+        $device = $deviceValidation['device'];
+        if ($device->branch_id === null) {
+            return response()->json(['success' => false, 'message' => 'This device is not assigned to a branch.'], 403);
+        }
+
+        $employee = EmployeeProfile::where('branch_id', $device->branch_id)
+            ->where('employee_number', trim($request->employee_number))
+            ->first();
         if (!$employee) {
             return response()->json(['exists' => false, 'message' => 'Employee not found.'], 404);
         }
@@ -1685,12 +1588,17 @@ class BiometricController extends Controller
     // Get today's DTR for the scanner display
     public function getTodayDTR(Request $request)
     {
-        $branchId = $request->query('branch_id');
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['success' => false, 'message' => $deviceValidation['error']], $deviceValidation['code']);
+        }
+        $device = $deviceValidation['device'];
+        if ($device->branch_id === null) {
+            return response()->json(['success' => false, 'message' => 'This device is not assigned to a branch.'], 403);
+        }
         
         $attendances = AttendanceLog::where('attendance_date', today())
-            ->when($branchId, function($query) use ($branchId) {
-                $query->where('branch_id', $branchId);
-            })
+            ->where('branch_id', $device->branch_id)
             ->with('employee')
             ->orderBy('created_at', 'desc')
             ->get();
@@ -1720,13 +1628,18 @@ class BiometricController extends Controller
     // Get recent employee attendance for the scanner list view
     public function getRecentEmployeesAttendance(Request $request)
     {
-        $branchId = $request->query('branch_id');
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['success' => false, 'message' => $deviceValidation['error']], $deviceValidation['code']);
+        }
+        $device = $deviceValidation['device'];
+        if ($device->branch_id === null) {
+            return response()->json(['success' => false, 'message' => 'This device is not assigned to a branch.'], 403);
+        }
         $limit = $request->query('limit', 15);
         
         $attendances = AttendanceLog::where('attendance_date', today())
-            ->when($branchId, function($query) use ($branchId) {
-                $query->where('branch_id', $branchId);
-            })
+            ->where('branch_id', $device->branch_id)
             ->with('employee')
             ->orderBy('updated_at', 'desc')
             ->limit($limit)
@@ -1766,15 +1679,21 @@ class BiometricController extends Controller
             'mac_address' => 'nullable|string|max:100',
             'device_id' => 'nullable|string|max:100',
             'location' => 'nullable|string|max:255',
+            'device_serial' => 'required|string|max:100',
+            'device_id' => 'nullable|string|max:100',
+            'timestamp' => 'required|string',
+            'nonce' => 'required|string|max:100',
+            'signature' => 'required|string|size:64',
         ]);
 
-        $device = $this->resolveDeviceFromRequest($request);
-        if (!$device) {
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Enrollment device is not registered or inactive.',
-            ], 401);
+                'message' => $deviceValidation['error'],
+            ], $deviceValidation['code']);
         }
+        $device = $deviceValidation['device'];
 
         if ($device->branch_id === null) {
             $this->clearFingerprintTempCache($request);
@@ -1952,12 +1871,27 @@ class BiometricController extends Controller
             'employee_number' => 'required|string',
         ]);
 
-        $employee = EmployeeProfile::where('employee_number', $request->employee_number)->first();
+        $deviceValidation = $this->validateDeviceIdentity($request);
+        if (isset($deviceValidation['error'])) {
+            return response()->json(['success' => false, 'message' => $deviceValidation['error']], $deviceValidation['code']);
+        }
+        $device = $deviceValidation['device'];
+        if ($device->branch_id === null) {
+            return response()->json(['success' => false, 'message' => 'This device is not assigned to a branch.'], 403);
+        }
+
+        $employee = EmployeeProfile::where('branch_id', $device->branch_id)
+            ->where('employee_number', $request->employee_number)
+            ->first();
         if (!$employee) {
-            $employee = FinanceProfile::where('employee_number', $request->employee_number)->first();
+            $employee = FinanceProfile::where('branch_id', $device->branch_id)
+                ->where('employee_number', $request->employee_number)
+                ->first();
         }
         if (!$employee) {
-            $employee = AdminProfile::where('employee_number', $request->employee_number)->first();
+            $employee = AdminProfile::where('branch_id', $device->branch_id)
+                ->where('employee_number', $request->employee_number)
+                ->first();
         }
 
         if (!$employee) {
@@ -1980,4 +1914,3 @@ class BiometricController extends Controller
         ]);
     }
 }
-

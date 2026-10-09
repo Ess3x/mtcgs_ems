@@ -12,6 +12,7 @@ class Device extends Model
         'wifi_mac_address',
         'laptop_mac_address',
         'allowed_mac_addresses',
+        'api_secret',
         'device_name',
         'device_type',
         'branch_id',
@@ -32,8 +33,13 @@ class Device extends Model
         'longitude' => 'decimal:7',
         'radius_meters' => 'integer',
         'location_check_enabled' => 'boolean',
+        'api_secret' => 'encrypted',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
+    ];
+
+    protected $hidden = [
+        'api_secret',
     ];
 
     public function branch()

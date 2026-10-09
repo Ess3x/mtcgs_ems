@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\Device;
+use App\Services\BiometricDeviceAuthenticator;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 
 class MacAddressController extends Controller
 {
@@ -19,22 +21,23 @@ class MacAddressController extends Controller
     public function validateMacAddress(Request $request)
     {
         $request->validate([
-            'mac_address' => 'required|string',
+            'device_serial' => 'required|string|max:100',
+            'mac_address' => 'required|string|max:20',
+            'device_id' => 'nullable|string|max:100',
+            'timestamp' => 'required|string',
+            'nonce' => 'required|string|max:100',
+            'signature' => 'required|string|size:64',
         ]);
 
-        $macAddress = Device::normalizeMacAddress($request->mac_address);
-
-        $device = Device::getByMacAddress($macAddress);
-
-        if (!$device) {
+        $validation = app(BiometricDeviceAuthenticator::class)->authenticate($request);
+        if (isset($validation['error'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'MAC address not registered or inactive',
-                'mac_address' => $macAddress,
-            ], 401);
+                'message' => $validation['error'],
+            ], $validation['code']);
         }
+        $device = $validation['device'];
 
-        // Update last used timestamp
         $device->updateLastUsed();
 
         return response()->json([
@@ -58,18 +61,22 @@ class MacAddressController extends Controller
     public function getDeviceInfo(Request $request)
     {
         $request->validate([
-            'mac_address' => 'required|string',
+            'device_serial' => 'required|string|max:100',
+            'mac_address' => 'required|string|max:20',
+            'device_id' => 'nullable|string|max:100',
+            'timestamp' => 'required|string',
+            'nonce' => 'required|string|max:100',
+            'signature' => 'required|string|size:64',
         ]);
 
-        $macAddress = Device::normalizeMacAddress($request->mac_address);
-        $device = Device::getByMacAddress($macAddress);
-
-        if (!$device) {
+        $validation = app(BiometricDeviceAuthenticator::class)->authenticate($request);
+        if (isset($validation['error'])) {
             return response()->json([
                 'success' => false,
-                'message' => 'Device not found',
-            ], 404);
+                'message' => $validation['error'],
+            ], $validation['code']);
         }
+        $device = $validation['device'];
 
         return response()->json([
             'success' => true,
@@ -91,29 +98,19 @@ class MacAddressController extends Controller
     public function getDeviceStatus(Request $request)
     {
         $request->validate([
-            'device_serial' => 'nullable|string',
+            'device_serial' => 'required|string|max:100',
+            'mac_address' => 'required|string|max:20',
             'device_id' => 'nullable|string',
+            'timestamp' => 'required|string',
+            'nonce' => 'required|string|max:100',
+            'signature' => 'required|string|size:64',
         ]);
 
-        if (!$request->filled('device_serial') && !$request->filled('device_id')) {
-            return response()->json(['success' => false, 'message' => 'Device identity is required.'], 422);
+        $validation = app(BiometricDeviceAuthenticator::class)->authenticate($request, requireActive: false);
+        if (isset($validation['error'])) {
+            return response()->json(['success' => false, 'message' => $validation['error']], $validation['code']);
         }
-
-        $device = null;
-        if ($request->filled('device_serial')) {
-            $serial = Device::normalizeSerialNumber($request->input('device_serial'));
-            $device = Device::whereRaw('UPPER(TRIM(serial_number)) = ?', [$serial])->first();
-        }
-
-        if (!$device && $request->filled('device_id')) {
-            $device = Device::where('id', $request->input('device_id'))
-                ->orWhere('serial_number', $request->input('device_id'))
-                ->first();
-        }
-
-        if (!$device) {
-            return response()->json(['success' => false, 'message' => 'Device not found.'], 404);
-        }
+        $device = $validation['device'];
 
         return response()->json([
             'success' => true,
@@ -141,16 +138,20 @@ class MacAddressController extends Controller
 
         $request->validate([
             'mac_address' => 'required|string|unique:devices',
+            'serial_number' => 'required|string|max:100|unique:devices,serial_number',
             'device_name' => 'required|string',
             'device_type' => 'required|in:biometric_scanner,kiosk,computer',
-            'branch_id' => 'nullable|exists:branches,id',
+            'branch_id' => 'required|exists:branches,id',
             'location' => 'nullable|string',
         ]);
 
         $macAddress = Device::normalizeMacAddress($request->mac_address);
+        $credential = Str::random(64);
 
         $device = Device::create([
             'mac_address' => $macAddress,
+            'serial_number' => Device::normalizeSerialNumber($request->serial_number),
+            'api_secret' => $credential,
             'device_name' => $request->device_name,
             'device_type' => $request->device_type,
             'branch_id' => $request->branch_id,
@@ -161,7 +162,8 @@ class MacAddressController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Device registered successfully',
-            'device' => $device,
+            'device' => $device->only(['id', 'mac_address', 'serial_number', 'device_name', 'device_type', 'branch_id', 'location', 'status']),
+            'credential' => $credential,
         ], 201);
     }
 

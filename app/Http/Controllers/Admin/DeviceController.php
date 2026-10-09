@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Device;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 
@@ -72,7 +73,7 @@ class DeviceController extends Controller
             'allowed_mac_addresses' => ['nullable', 'array'],
             'device_name' => 'required|string|max:255',
             'device_type' => 'required|in:biometric_scanner,kiosk,computer',
-            'branch_id' => 'nullable|exists:branches,id',
+            'branch_id' => 'required|exists:branches,id',
             'location' => 'nullable|string|max:255',
             'address' => 'nullable|string|max:500',
             'latitude' => 'nullable|numeric|between:-90,90',
@@ -93,9 +94,11 @@ class DeviceController extends Controller
         }
         $normalizedAllowedMacs = array_values(array_unique($normalizedAllowedMacs));
 
+        $credential = Str::random(64);
         $device = Device::create([
             'mac_address' => Device::normalizeMacAddress($request->mac_address),
             'serial_number' => Device::normalizeSerialNumber($request->serial_number),
+            'api_secret' => $credential,
             'wifi_mac_address' => Device::normalizeMacAddress($request->mac_address),
             'laptop_mac_address' => $request->filled('laptop_mac_address') ? trim($request->laptop_mac_address) : null,
             'allowed_mac_addresses' => $normalizedAllowedMacs ? json_encode($normalizedAllowedMacs) : null,
@@ -120,7 +123,9 @@ class DeviceController extends Controller
             ], 201);
         }
 
-        return redirect()->route('admin.devices.index')->with('success', 'Device registered successfully.');
+        return redirect()->route('admin.devices.show', $device)
+            ->with('success', 'Device registered successfully.')
+            ->with('new_device_credential', $credential);
     }
 
     public function edit(Device $device)
@@ -141,6 +146,20 @@ class DeviceController extends Controller
         return view('admin.devices.show', compact('device'));
     }
 
+    public function rotateCredential(Device $device)
+    {
+        $this->authorizeDeviceManagement();
+
+        $credential = Str::random(64);
+        $device->update(['api_secret' => $credential]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Device credential rotated. The previous credential is no longer valid.',
+            'credential' => $credential,
+        ]);
+    }
+
     public function update(Request $request, Device $device)
     {
         $this->authorizeDeviceManagement();
@@ -148,9 +167,9 @@ class DeviceController extends Controller
         $request->validate([
             'device_name' => 'required|string|max:255',
             'device_type' => 'required|in:biometric_scanner,kiosk,computer',
-            'branch_id' => 'nullable|exists:branches,id',
+            'branch_id' => ['required', 'exists:branches,id'],
             'mac_address' => ['required', 'string', 'max:20', 'regex:/^(?:[A-Fa-f0-9]{2}[:-]?){5}[A-Fa-f0-9]{2}$/', Rule::unique('devices', 'mac_address')->ignore($device->id)],
-            'serial_number' => ['nullable', 'string', 'max:100', Rule::unique('devices', 'serial_number')->ignore($device->id)],
+            'serial_number' => ['required', 'string', 'max:100', Rule::unique('devices', 'serial_number')->ignore($device->id)],
             'wifi_mac_address' => ['nullable', 'string', 'max:20', 'regex:/^(?:[A-Fa-f0-9]{2}[:-]?){5}[A-Fa-f0-9]{2}$/'],
             'laptop_mac_address' => ['nullable', 'string', 'max:100'],
             'allowed_mac_addresses' => ['nullable', 'array'],

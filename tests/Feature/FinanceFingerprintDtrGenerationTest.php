@@ -27,6 +27,8 @@ class FinanceFingerprintDtrGenerationTest extends TestCase
 {
     use RefreshDatabase;
 
+    private const DEVICE_SECRET = 'test-dtr-device-secret-for-signed-requests';
+
     public function test_holiday_bonus_is_shown_on_web_and_pdf_payslips(): void
     {
         $branch = Branch::create([
@@ -499,6 +501,8 @@ class FinanceFingerprintDtrGenerationTest extends TestCase
 
     public function test_scanner_time_clock_generates_current_dtr_record(): void
     {
+        \Illuminate\Support\Carbon::setTestNow('2026-10-12 08:15:00');
+
         $branch = Branch::create([
             'branch_code' => 'BR-DTR-SCANNER',
             'branch_name' => 'Scanner DTR Branch',
@@ -533,6 +537,7 @@ class FinanceFingerprintDtrGenerationTest extends TestCase
             'mac_address' => 'AA-BB-CC-DD-EE-FF',
             'wifi_mac_address' => null,
             'serial_number' => 'SERIAL-DTR-SCANNER-001',
+            'api_secret' => self::DEVICE_SECRET,
             'device_name' => 'DTR Scanner Test',
             'device_type' => 'computer',
             'branch_id' => $branch->id,
@@ -552,8 +557,9 @@ class FinanceFingerprintDtrGenerationTest extends TestCase
             'attendance_timestamp' => $timestamp,
             'nonce' => 'scanner-dtr-test-nonce',
         ];
-        $secret = config('app.biometric_device_secret') ?? env('BIOMETRIC_DEVICE_SECRET') ?? env('APP_KEY');
         $payload['signature'] = hash_hmac('sha256', implode('|', [
+            'POST',
+            'api/biometric/time-clock',
             $payload['employee_id'],
             $payload['employee_number'],
             $payload['device_serial'],
@@ -562,12 +568,16 @@ class FinanceFingerprintDtrGenerationTest extends TestCase
             $payload['mac_address'],
             $payload['timestamp'],
             $payload['nonce'],
-        ]), $secret);
+            $payload['action'],
+            $payload['fingerprint_data'],
+            '',
+            $payload['attendance_timestamp'],
+        ]), self::DEVICE_SECRET);
         $request = Request::create('/api/biometric/time-clock', 'POST', $payload);
 
         $response = (new BiometricController())->processTimeClock($request);
 
-        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame(200, $response->getStatusCode(), $response->content());
         $this->assertDatabaseHas('attendance_logs', [
             'employee_profile_id' => $employee->id,
             'attendance_date' => today()->toDateTimeString(),
@@ -575,6 +585,7 @@ class FinanceFingerprintDtrGenerationTest extends TestCase
         $this->assertDatabaseHas('dtrs', [
             'employee_profile_id' => $employee->id,
         ]);
+        \Illuminate\Support\Carbon::setTestNow();
     }
 
     public function test_attendance_date_selects_the_correct_cutoff_period(): void

@@ -18,7 +18,9 @@ class BiometricDeviceMetadataTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function signature(array $payload): string
+    private const DEVICE_SECRET = 'test-biometric-device-secret-for-signed-requests';
+
+    private function legacySignature(array $payload): string
     {
         return hash_hmac('sha256', implode('|', [
             $payload['employee_number'] ?? null,
@@ -31,10 +33,11 @@ class BiometricDeviceMetadataTest extends TestCase
         ]), 'mtcgs-2026-secure-device-hmac-7c7fba18a9b2');
     }
 
-    private function signedDevicePayload(array $payload): array
+    private function signedDevicePayload(array $payload, string $method, string $path): array
     {
-        $secret = config('app.biometric_device_secret') ?: env('BIOMETRIC_DEVICE_SECRET') ?: config('app.key');
-        $payload['signature'] = hash_hmac('sha256', implode('|', [
+        $values = [
+            strtoupper($method),
+            ltrim($path, '/'),
             $payload['employee_id'] ?? null,
             $payload['employee_number'] ?? null,
             $payload['device_serial'] ?? null,
@@ -43,7 +46,16 @@ class BiometricDeviceMetadataTest extends TestCase
             $payload['mac_address'] ?? null,
             $payload['timestamp'] ?? null,
             $payload['nonce'] ?? null,
-        ]), $secret);
+            $payload['action'] ?? null,
+            $payload['fingerprint_data'] ?? null,
+            $payload['branch'] ?? null,
+            $payload['attendance_timestamp'] ?? null,
+        ];
+        $payload['signature'] = hash_hmac(
+            'sha256',
+            implode('|', array_map(static fn ($value) => is_scalar($value) ? (string) $value : '', $values)),
+            self::DEVICE_SECRET
+        );
 
         return $payload;
     }
@@ -108,6 +120,7 @@ class BiometricDeviceMetadataTest extends TestCase
         $device = Device::create([
             'mac_address' => 'AA-BB-CC-DD-EE-FF',
             'serial_number' => 'SERIAL-IRIGA-TEMPLATE-001',
+            'api_secret' => self::DEVICE_SECRET,
             'device_name' => 'Iriga Test Scanner',
             'device_type' => 'computer',
             'branch_id' => $iriga->id,
@@ -124,7 +137,7 @@ class BiometricDeviceMetadataTest extends TestCase
             'mac_address' => 'AA:BB:CC:DD:EE:FF',
             'timestamp' => $timestamp,
             'nonce' => 'iriga-template-list-nonce',
-        ]);
+        ], 'GET', '/api/biometric/templates');
         $templatesResponse = (new BiometricController())->getFingerprintTemplates(
             Request::create('/api/biometric/templates', 'GET', $deviceIdentity)
         );
@@ -136,6 +149,11 @@ class BiometricDeviceMetadataTest extends TestCase
             ->values()
             ->all();
         $this->assertSame([$irigaEmployee->employee_number], $templateNumbers);
+
+        $replayResponse = (new BiometricController())->getFingerprintTemplates(
+            Request::create('/api/biometric/templates', 'GET', $deviceIdentity)
+        );
+        $this->assertSame(401, $replayResponse->getStatusCode(), $replayResponse->content());
 
         $attendancePayload = $this->signedDevicePayload([
             'employee_id' => null,
@@ -149,7 +167,7 @@ class BiometricDeviceMetadataTest extends TestCase
             'timestamp' => $timestamp,
             'attendance_timestamp' => $timestamp,
             'nonce' => 'cross-branch-time-in-nonce',
-        ]);
+        ], 'POST', '/api/biometric/time-clock');
         $attendanceResponse = (new BiometricController())->processTimeClock(
             Request::create('/api/biometric/time-clock', 'POST', $attendancePayload)
         );
@@ -212,7 +230,7 @@ class BiometricDeviceMetadataTest extends TestCase
             'timestamp' => now()->format('m/d/Y h:i:s A'),
             'nonce' => 'invalid-device-test',
         ];
-        $invalidPayload['signature'] = $this->signature($invalidPayload);
+        $invalidPayload['signature'] = $this->legacySignature($invalidPayload);
         $request = Request::create('/api/biometric/attendance', 'POST', $invalidPayload);
 
         $response = (new BiometricController())->processAttendance($request);
@@ -230,7 +248,7 @@ class BiometricDeviceMetadataTest extends TestCase
             'timestamp' => now()->setTime(8, 15)->format('m/d/Y h:i:s A'),
             'nonce' => 'valid-device-test',
         ];
-        $validPayload['signature'] = $this->signature($validPayload);
+        $validPayload['signature'] = $this->legacySignature($validPayload);
         $validRequest = Request::create('/api/biometric/attendance', 'POST', $validPayload);
 
         $validResponse = (new BiometricController())->processAttendance($validRequest);
@@ -284,6 +302,7 @@ class BiometricDeviceMetadataTest extends TestCase
         $device = Device::create([
             'mac_address' => 'AA-BB-CC-DD-EE-FF',
             'serial_number' => 'SERIAL-SUSPENSION-001',
+            'api_secret' => self::DEVICE_SECRET,
             'device_name' => 'Suspension Test Terminal',
             'device_type' => 'computer',
             'branch_id' => $branch->id,
@@ -301,21 +320,25 @@ class BiometricDeviceMetadataTest extends TestCase
             'approved_at' => now(),
         ]);
 
-        $suspensionsResponse = (new BiometricController())->getAttendanceSuspensions(Request::create(
-            '/api/biometric/suspensions',
-            'GET',
-            [
-                'device_serial' => $device->serial_number,
-                'start_date' => '2026-09-28',
-                'end_date' => '2026-09-28',
-            ]
-        ));
+        $suspensionQuery = $this->signedDevicePayload([
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'suspension-query-nonce',
+            'start_date' => '2026-09-28',
+            'end_date' => '2026-09-28',
+        ], 'GET', '/api/biometric/suspensions');
+        $suspensionsResponse = (new BiometricController())->getAttendanceSuspensions(
+            Request::create('/api/biometric/suspensions', 'GET', $suspensionQuery)
+        );
 
         $this->assertSame(200, $suspensionsResponse->getStatusCode());
         $suspensionDates = json_decode($suspensionsResponse->content(), true)['dates'];
         $this->assertContains('2026-09-28', $suspensionDates, json_encode($suspensionDates));
 
-        $payload = [
+        $payload = $this->signedDevicePayload([
             'employee_id' => null,
             'employee_number' => $employee->employee_number,
             'fingerprint_data' => 'suspension-test-template',
@@ -327,20 +350,7 @@ class BiometricDeviceMetadataTest extends TestCase
             'timestamp' => now()->toIso8601String(),
             'attendance_timestamp' => now()->toIso8601String(),
             'nonce' => 'suspension-test-nonce',
-        ];
-        $secret = config('app.biometric_device_secret')
-            ?: env('BIOMETRIC_DEVICE_SECRET')
-            ?: config('app.key');
-        $payload['signature'] = hash_hmac('sha256', implode('|', [
-            $payload['employee_id'],
-            $payload['employee_number'],
-            $payload['device_serial'],
-            $payload['wifi_mac'],
-            $payload['device_id'],
-            $payload['mac_address'],
-            $payload['timestamp'],
-            $payload['nonce'],
-        ]), $secret);
+        ], 'POST', '/api/biometric/time-clock');
 
         $response = (new BiometricController())->processTimeClock(
             Request::create('/api/biometric/time-clock', 'POST', $payload)
@@ -369,16 +379,7 @@ class BiometricDeviceMetadataTest extends TestCase
         $payload['timestamp'] = '2026-09-28T09:15:00+08:00';
         $payload['attendance_timestamp'] = $payload['timestamp'];
         $payload['nonce'] = 'suspension-timeout-nonce';
-        $payload['signature'] = hash_hmac('sha256', implode('|', [
-            $payload['employee_id'],
-            $payload['employee_number'],
-            $payload['device_serial'],
-            $payload['wifi_mac'],
-            $payload['device_id'],
-            $payload['mac_address'],
-            $payload['timestamp'],
-            $payload['nonce'],
-        ]), $secret);
+        $payload = $this->signedDevicePayload($payload, 'POST', '/api/biometric/time-clock');
 
         $timeoutResponse = (new BiometricController())->processTimeClock(
             Request::create('/api/biometric/time-clock', 'POST', $payload)

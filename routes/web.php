@@ -210,6 +210,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/devices/create', [App\Http\Controllers\Admin\DeviceController::class, 'create'])->name('devices.create');
         Route::post('/devices', [App\Http\Controllers\Admin\DeviceController::class, 'store'])->name('devices.store');
         Route::get('/devices/branches/{branch}', [App\Http\Controllers\Admin\DeviceController::class, 'branchDetails'])->name('devices.branches.show');
+        Route::post('/devices/{device}/credential', [App\Http\Controllers\Admin\DeviceController::class, 'rotateCredential'])->name('devices.credential.rotate');
         Route::get('/devices/{device}', [App\Http\Controllers\Admin\DeviceController::class, 'show'])->name('devices.show');
         Route::get('/devices/{device}/edit', [App\Http\Controllers\Admin\DeviceController::class, 'edit'])->name('devices.edit');
         Route::put('/devices/{device}', [App\Http\Controllers\Admin\DeviceController::class, 'update'])->name('devices.update');
