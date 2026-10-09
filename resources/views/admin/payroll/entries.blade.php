@@ -34,6 +34,29 @@
         overflow-wrap: anywhere;
         line-height: 1.3;
     }
+
+    body.dark-mode .payroll-period-summary .card {
+        background-color: #9132a8 !important;
+        border-color: #9132a8 !important;
+        color: #fff !important;
+    }
+
+    body.dark-mode .payroll-period-summary .card h6,
+    body.dark-mode .payroll-period-summary .card h3 {
+        color: #fff !important;
+    }
+
+    body.dark-mode .payroll-entries-table tbody tr,
+    body.dark-mode .payroll-entries-table tbody td {
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+        color: #f8fafc !important;
+    }
+
+    body.dark-mode .payroll-entries-table.table-hover tbody tr:hover,
+    body.dark-mode .payroll-entries-table.table-hover tbody tr:hover td {
+        background-color: #273449 !important;
+    }
 </style>
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
@@ -45,7 +68,7 @@
         </div>
     </div>
     
-    <div class="row mb-4">
+    <div class="row mb-4 payroll-period-summary">
         <div class="col-md-3">
             <div class="card bg-info text-white">
                 <div class="card-body">
@@ -231,11 +254,13 @@
                                     <form action="{{ route('admin.payroll.submit-payslip', $entry->id) }}" method="POST" class="d-inline">
                                         @csrf
                                         <button type="submit" class="btn btn-sm btn-primary mb-1" onclick="return confirm('Submit this payslip to the employee email?')">
-                                            <i class="fas fa-paper-plane"></i> {{ $entry->payslip_sent_at ? 'Resend Payroll & Payslip' : 'Send Payroll & Payslip' }}
+                                            <i class="fas fa-paper-plane"></i> {{ $entry->payslip_sent_at ? 'Resend Payroll & Payslip' : ($entry->payslip_published_at ? 'Retry Payslip Email' : 'Send Payroll & Payslip') }}
                                         </button>
                                     </form>
                                     @if($entry->payslip_sent_at)
                                         <small class="d-block text-success"><i class="fas fa-check-circle"></i> Sent to {{ $entry->payslip_sent_to }}</small>
+                                    @elseif($entry->payslip_published_at)
+                                        <small class="d-block text-info"><i class="fas fa-eye"></i> Available in My Payslips; email not sent</small>
                                     @endif
                                 @endif
                             @endif

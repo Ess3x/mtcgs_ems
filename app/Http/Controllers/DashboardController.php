@@ -39,7 +39,7 @@ class DashboardController extends Controller
             $lateToday = AttendanceLog::whereDate('attendance_date', today())->where('late_minutes', '>', 0)->whereHas('employeeProfile.user', function($q) {
                 $q->where('is_active', true);
             })->count();
-            $pendingLeaves = LeaveRequest::where('status', 'pending')->count();
+            $pendingLeaves = LeaveRequest::whereIn('status', ['pending', 'pending_system_admin'])->count();
             $pendingCount = User::where('id_verification_status', 'pending')->count();
             $absentToday = max(0, $totalEmployees - $presentToday);
             $attendanceRate = $totalEmployees > 0 ? round(($presentToday / $totalEmployees) * 100) : 0;
@@ -76,7 +76,14 @@ class DashboardController extends Controller
                     $q->where('is_active', true);
                 })
                 ->whereDate('attendance_date', today())
-                ->latest('attendance_date')
+                ->where(function ($query) {
+                    $query->whereNotNull('am_in')
+                        ->orWhereNotNull('am_out')
+                        ->orWhereNotNull('pm_in')
+                        ->orWhereNotNull('pm_out');
+                })
+                ->orderByDesc('attendance_date')
+                ->orderByDesc('id')
                 ->limit(5)
                 ->get()
                 ->map(function($log) {
@@ -85,10 +92,8 @@ class DashboardController extends Controller
                         'date' => $log->attendance_date ? $log->attendance_date->format('M d, Y') : 'N/A',
                         'employee' => $profile ? ($profile->first_name . ' ' . $profile->last_name) : 'Unknown',
                         'employee_number' => $profile ? $profile->employee_number : 'N/A',
-                        'am_in' => $log->am_in ? $log->am_in->format('h:i A') : '--',
-                        'am_out' => $log->am_out ? $log->am_out->format('h:i A') : '--',
-                        'pm_in' => $log->pm_in ? $log->pm_in->format('h:i A') : '--',
-                        'pm_out' => $log->pm_out ? $log->pm_out->format('h:i A') : '--',
+                        'time_in' => ($log->am_in ?: $log->pm_in)?->format('h:i A') ?? '--',
+                        'time_out' => ($log->pm_out ?: $log->am_out)?->format('h:i A') ?? '--',
                         'status' => $log->status ?? 'N/A',
                         'late_minutes' => (int)($log->late_minutes ?? 0),
                         'overtime_hours' => (float)($log->overtime_hours ?? 0),
@@ -135,7 +140,7 @@ class DashboardController extends Controller
             // Pending leaves
             $pendingLeaves = LeaveRequest::whereHas('employeeProfile', function($q) use ($branchId) {
                 $q->where('branch_id', $branchId);
-            })->where('status', 'pending')->count();
+            })->whereIn('status', ['pending', 'pending_system_admin'])->count();
             
             $pendingCount = User::where('id_verification_status', 'pending')->count();
             $absentToday = max(0, $totalEmployees - $presentToday);
@@ -179,7 +184,14 @@ class DashboardController extends Controller
                     $q->where('is_active', true);
                 })
                 ->whereDate('attendance_date', today())
-                ->latest('attendance_date')
+                ->where(function ($query) {
+                    $query->whereNotNull('am_in')
+                        ->orWhereNotNull('am_out')
+                        ->orWhereNotNull('pm_in')
+                        ->orWhereNotNull('pm_out');
+                })
+                ->orderByDesc('attendance_date')
+                ->orderByDesc('id')
                 ->limit(5)
                 ->get()
                 ->map(function($log) {
@@ -188,10 +200,8 @@ class DashboardController extends Controller
                         'date' => $log->attendance_date ? $log->attendance_date->format('M d, Y') : 'N/A',
                         'employee' => $profile ? ($profile->first_name . ' ' . $profile->last_name) : 'Unknown',
                         'employee_number' => $profile ? $profile->employee_number : 'N/A',
-                        'am_in' => $log->am_in ? $log->am_in->format('h:i A') : '--',
-                        'am_out' => $log->am_out ? $log->am_out->format('h:i A') : '--',
-                        'pm_in' => $log->pm_in ? $log->pm_in->format('h:i A') : '--',
-                        'pm_out' => $log->pm_out ? $log->pm_out->format('h:i A') : '--',
+                        'time_in' => ($log->am_in ?: $log->pm_in)?->format('h:i A') ?? '--',
+                        'time_out' => ($log->pm_out ?: $log->am_out)?->format('h:i A') ?? '--',
                         'status' => $log->status ?? 'N/A',
                         'late_minutes' => (int)($log->late_minutes ?? 0),
                         'overtime_hours' => (float)($log->overtime_hours ?? 0),
@@ -244,7 +254,7 @@ class DashboardController extends Controller
             // Pending leaves
             $pendingLeaves = LeaveRequest::whereHas('employeeProfile', function($q) use ($branchId) {
                 $q->where('branch_id', $branchId);
-            })->where('status', 'pending')->count();
+            })->whereIn('status', ['pending', 'pending_system_admin'])->count();
             
             // Monthly payroll total
             $monthlyPayroll = PayrollEntry::whereHas('employeeProfile', function($q) use ($branchId) {
@@ -319,7 +329,7 @@ class DashboardController extends Controller
             })->whereDate('attendance_date', today())->where('late_minutes', '>', 0)->count();
             $pendingLeaves = LeaveRequest::whereHas('employeeProfile', function($q) use ($branchId) {
                 $q->where('branch_id', $branchId);
-            })->where('status', 'pending')->count();
+            })->whereIn('status', ['pending', 'pending_system_admin'])->count();
             $pendingCount = User::where('id_verification_status', 'pending')->count();
             $absentToday = max(0, $totalEmployees - $presentToday);
             $attendanceRate = $totalEmployees > 0 ? round(($presentToday / $totalEmployees) * 100) : 0;
@@ -359,7 +369,14 @@ class DashboardController extends Controller
                     $q->where('branch_id', $branchId);
                 })
                 ->whereDate('attendance_date', today())
-                ->latest('attendance_date')
+                ->where(function ($query) {
+                    $query->whereNotNull('am_in')
+                        ->orWhereNotNull('am_out')
+                        ->orWhereNotNull('pm_in')
+                        ->orWhereNotNull('pm_out');
+                })
+                ->orderByDesc('attendance_date')
+                ->orderByDesc('id')
                 ->limit(5)
                 ->get()
                 ->map(function($log) {
@@ -368,10 +385,8 @@ class DashboardController extends Controller
                         'date' => $log->attendance_date ? $log->attendance_date->format('M d, Y') : 'N/A',
                         'employee' => $profile ? ($profile->first_name . ' ' . $profile->last_name) : 'Unknown',
                         'employee_number' => $profile ? $profile->employee_number : 'N/A',
-                        'am_in' => $log->am_in ? $log->am_in->format('h:i A') : '--',
-                        'am_out' => $log->am_out ? $log->am_out->format('h:i A') : '--',
-                        'pm_in' => $log->pm_in ? $log->pm_in->format('h:i A') : '--',
-                        'pm_out' => $log->pm_out ? $log->pm_out->format('h:i A') : '--',
+                        'time_in' => ($log->am_in ?: $log->pm_in)?->format('h:i A') ?? '--',
+                        'time_out' => ($log->pm_out ?: $log->am_out)?->format('h:i A') ?? '--',
                         'status' => $log->status ?? 'N/A',
                         'late_minutes' => (int)($log->late_minutes ?? 0),
                         'overtime_hours' => (float)($log->overtime_hours ?? 0),
@@ -410,7 +425,7 @@ class DashboardController extends Controller
             ->whereDate('attendance_date', today())->first();
         
         $pendingLeaves = LeaveRequest::where('employee_profile_id', $profile->id)
-            ->where('status', 'pending')->count();
+            ->whereIn('status', ['pending', 'pending_system_admin'])->count();
         
         $recentAttendance = AttendanceLog::where('employee_profile_id', $profile->id)
             ->whereDate('attendance_date', today())

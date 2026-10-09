@@ -18,6 +18,7 @@
         th { background: #e5e7eb; text-align: center; }
         td.center { text-align: center; }
         .summary td { width: 25%; }
+        .summary-detail td { width: 25%; }
         .summary strong { display: block; font-size: 11px; margin-top: 3px; }
         .status { text-align: center; font-weight: bold; }
         .signature { page-break-inside: avoid; margin-top: 16px; text-align: center; }
@@ -62,31 +63,51 @@
             <td>Days Present<strong>{{ $stats['days_present'] }}</strong></td>
             <td>Days Absent<strong>{{ $stats['days_absent'] }}</strong></td>
         </tr>
+        <tr class="summary-detail">
+            <td>Total Late<strong>{{ $stats['total_late_minutes'] }} min</strong></td>
+            <td>Early Out<strong>{{ $stats['total_early_out_minutes'] }} min</strong></td>
+            <td>Total Paid Leave<strong>{{ $stats['total_paid_leave'] }} day(s)</strong></td>
+            <td>Total Leave Without Pay<strong>{{ $stats['total_leave_without_pay'] }} day(s)</strong></td>
+        </tr>
+        <tr class="summary-detail">
+            <td>Total Holidays<strong>{{ $stats['total_holidays'] }}</strong></td>
+            <td>Total Suspensions<strong>{{ $stats['total_suspensions'] }}</strong></td>
+            <td>Total Halfdays<strong>{{ $stats['total_half_days'] }}</strong></td>
+            <td>Total Suspended Hours<strong>{{ number_format($stats['total_suspended_hours'], 1) }} hrs</strong></td>
+        </tr>
     </table>
 
     <table style="margin-top: 14px;">
         <thead>
             <tr>
                 <th>Date</th>
-                <th>AM In</th>
-                <th>AM Out</th>
-                <th>PM In</th>
-                <th>PM Out</th>
-                <th>Late (min)</th>
+                <th>Time-In</th>
+                <th>Time-Out</th>
+                <th>Late/Early Out (min)</th>
                 <th>Status</th>
             </tr>
         </thead>
         <tbody>
             @foreach ($daysInPeriod as $day)
                 @php($log = $day['log'] ?? null)
+                @php($status = $day['status'] ?? 'N/A')
+                @php($lateEarlyOutMinutes = \App\Models\DTR::normalizeLateMinutesForLog($log))
+                @if ($log && in_array($status, ['present', 'late'], true))
+                    @php($attendanceStatus = $log->getDtrStatus())
+                    @if (in_array($attendanceStatus, ['Half Day', 'Early Out', 'Late', 'Late / Early Out'], true))
+                        @php($status = $attendanceStatus)
+                    @endif
+                    @if (in_array($attendanceStatus, ['Early Out', 'Late / Early Out'], true) && $log->pm_out)
+                        @php($scheduledEnd = $log->pm_out->copy()->setTime(17, 0, 0))
+                        @php($lateEarlyOutMinutes += max(0, (int) abs($scheduledEnd->diffInMinutes($log->pm_out))))
+                    @endif
+                @endif
                 <tr>
                     <td class="center">{{ $day['date']->format('M d, Y') }}</td>
-                    <td class="center">{{ $log?->am_in?->format('h:i A') ?? '--' }}</td>
-                    <td class="center">{{ $log?->am_out?->format('h:i A') ?? '--' }}</td>
-                    <td class="center">{{ $log?->pm_in?->format('h:i A') ?? '--' }}</td>
-                    <td class="center">{{ $log?->pm_out?->format('h:i A') ?? '--' }}</td>
-                    <td class="center">{{ $log?->late_minutes ?? 0 }}</td>
-                    <td class="status">{{ ucfirst($day['status'] ?? 'N/A') }}</td>
+                    <td class="center">{{ ($log?->am_in ?? $log?->pm_in)?->format('h:i A') ?? '--' }}</td>
+                    <td class="center">{{ ($log?->pm_out ?? $log?->am_out)?->format('h:i A') ?? '--' }}</td>
+                    <td class="center">{{ $lateEarlyOutMinutes }}</td>
+                    <td class="status">{{ is_string($status) && $status === 'Half Day' ? $status : ucfirst($status) }}</td>
                 </tr>
             @endforeach
         </tbody>

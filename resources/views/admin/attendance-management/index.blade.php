@@ -3,10 +3,16 @@
 @section('title', 'Attendance Management')
 
 @section('content')
+<style>
+    body.dark-mode .attendance-management-hero {
+        background: #8E1EA2 !important;
+    }
+</style>
+
 <div class="container-fluid py-4">
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card border-0 shadow-sm rounded-4" style="background: linear-gradient(135deg, #4f8fe9 0%, #3a73d8 100%); color: white;">
+            <div class="card border-0 shadow-sm rounded-4 attendance-management-hero" style="background: linear-gradient(135deg, #4f8fe9 0%, #3a73d8 100%); color: white;">
                 <div class="card-body p-4">
                     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
                         <div>

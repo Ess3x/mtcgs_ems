@@ -9,8 +9,8 @@
             <h2 class="mb-1 fw-bold"><i class="fas fa-id-card text-primary me-2"></i>User Profile</h2>
             <p class="text-muted mb-0">Complete profile information</p>
         </div>
-        <a href="{{ route('finance.employees') }}" class="btn btn-outline-primary">
-            <i class="fas fa-arrow-left me-1"></i> Back to Employees
+        <a href="{{ request()->routeIs('admin.employee.profile') ? route('admin.biometric') : route('finance.employees') }}" class="btn btn-outline-primary">
+            <i class="fas fa-arrow-left me-1"></i> Back to {{ request()->routeIs('admin.employee.profile') ? 'Biometric Management' : 'Employees' }}
         </a>
     </div>
 

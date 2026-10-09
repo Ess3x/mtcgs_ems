@@ -46,6 +46,7 @@
                                     <option value="">Select Type</option>
                                     <option value="activity" {{ old('event_type', $calendarEvent->event_type) === 'activity' ? 'selected' : '' }}>School Activity</option>
                                     <option value="holiday" {{ old('event_type', $calendarEvent->event_type) === 'holiday' ? 'selected' : '' }}>Holiday</option>
+                                    <option value="suspension" {{ old('event_type', $calendarEvent->event_type) === 'suspension' ? 'selected' : '' }}>Suspension</option>
                                 </select>
                                 @error('event_type')
                                     <div class="invalid-feedback">{{ $message }}</div>

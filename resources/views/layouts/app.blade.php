@@ -178,8 +178,17 @@
         .navbar-actions .dropdown-menu { z-index: 1102; }
         .notification-menu { min-width: 320px; max-width: 360px; }
         .notification-item { white-space: normal; }
+        .notification-row { display: flex; align-items: flex-start; }
+        .notification-row .notification-item { min-width: 0; flex: 1 1 auto; }
+        .notification-delete-form { flex: 0 0 auto; padding: 0.45rem 0.5rem 0 0; }
+        .notification-delete-button { color: var(--muted-color); }
+        .notification-delete-button:hover,
+        .notification-delete-button:focus-visible { color: #dc3545; }
         .notification-item.unread { background: rgba(13, 110, 253, 0.08); }
         .notification-item small { color: var(--muted-color); }
+        .notification-menu .notification-item strong { color: var(--text-color); }
+        .notification-menu .notification-item span { color: var(--text-color); }
+        .notification-menu .notification-item small { color: var(--muted-color); }
 
 
         .theme-toggle {
@@ -334,45 +343,6 @@
             background-color: var(--content-bg);
             color: var(--text-color);
         }
-        .modal-content,
-        .modal-header,
-        .modal-body,
-        .modal-footer {
-            background-color: #010736 !important;
-            color: #e2e8f0 !important;
-            border-color: rgba(148, 163, 184, 0.35) !important;
-        }
-        .modal-title,
-        .modal-header h5,
-        .modal-header .btn-close,
-        .modal-body .card,
-        .modal-body .card-header,
-        .modal-body .card-body,
-        .modal-body .table,
-        .modal-body .table th,
-        .modal-body .table td,
-        .modal-body p,
-        .modal-body label,
-        .modal-body strong,
-        .modal-body span {
-            color: #e2e8f0 !important;
-        }
-        .modal-header .btn-close {
-            filter: invert(1) grayscale(100%) brightness(200%);
-            opacity: 1;
-        }
-        .modal-body .card,
-        .modal-body .card-header,
-        .modal-body .card-body {
-            background-color: #010736 !important;
-            border-color: rgba(148, 163, 184, 0.35) !important;
-        }
-        .modal-body .table,
-        .modal-body .table th,
-        .modal-body .table td {
-            background-color: transparent !important;
-            color: #e2e8f0 !important;
-        }
         body.dark-mode .top-navbar { background: #1e293b; border-bottom-color: var(--border-color); }
         body.dark-mode .navbar-brand-text { color: var(--text-color); }
         body.dark-mode .top-navbar small { color: var(--muted-color); }
@@ -399,10 +369,11 @@
         body.dark-mode .card-header { background-color: var(--card-bg); border-bottom-color: var(--border-color); }
         body.dark-mode .table { color: var(--text-color); }
         body.dark-mode .table thead th { background: #0f172a; color: var(--text-color); border-color: var(--border-color); }
+        body.dark-mode .table-light thead th { background-color: #0f172a !important; color: var(--text-color) !important; border-color: var(--border-color) !important; }
         body.dark-mode .table tbody tr,
-        body.dark-mode .table tbody td { background-color: #4647AE; border-color: rgba(255,255,255,0.18); color: #ffffff; }
+        body.dark-mode .table tbody td { background-color: #2a2d45; border-color: rgba(255,255,255,0.1); color: #e2e8f0; }
         body.dark-mode .table-hover tbody tr:hover,
-        body.dark-mode .table-hover tbody tr:hover td { background-color: #5556bc; color: #ffffff; }
+        body.dark-mode .table-hover tbody tr:hover td { background-color: #3a3d55; color: #ffffff; }
         body.dark-mode .modal-content {
             background-color: #1e293b !important;
             border-color: var(--border-color) !important;
@@ -461,7 +432,18 @@
         body.dark-mode .sidebar .nav-link:hover,
         body.dark-mode .sidebar .nav-link:focus { background: rgba(255,255,255,0.2); color: #ffffff; }
         body.dark-mode .sidebar .nav-link.active { background: #7e22ce; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.24), 0 8px 18px rgba(0,0,0,0.24); }
-        body.dark-mode .notification-item.unread { background: rgba(220, 149, 255, 0.12); }
+        body.dark-mode .notification-menu { background: #1e293b; border-color: #475569; box-shadow: 0 16px 32px rgba(0,0,0,0.36); }
+        body.dark-mode .notification-menu > div:first-child { background: #273449; border-color: #475569 !important; color: #f8fafc; }
+        body.dark-mode .notification-menu > div:first-child strong { color: #f8fafc !important; }
+        body.dark-mode .notification-menu > div:first-child .btn-link { color: #d8b4fe !important; }
+        body.dark-mode .notification-menu .notification-item { color: #f8fafc !important; border-color: #334155; }
+        body.dark-mode .notification-menu .notification-item strong,
+        body.dark-mode .notification-menu .notification-item span { color: #f8fafc !important; }
+        body.dark-mode .notification-menu .notification-item small { color: #cbd5e1 !important; }
+        body.dark-mode .notification-menu .notification-item.unread { background: #3b2464; }
+        body.dark-mode .notification-menu .notification-item:hover,
+        body.dark-mode .notification-menu .notification-item:focus { background: #4c1d95 !important; color: #ffffff !important; }
+        body.dark-mode .notification-menu .text-muted { color: #cbd5e1 !important; }
         body.dark-mode .form-control,
         body.dark-mode .form-select {
             background: #0f172a;
@@ -715,9 +697,11 @@
                                 <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && !request('scope') ? 'active' : '' }}" href="{{ route('admin.cash-charges.index') }}">
                                     Cash Charges
                                 </a>
-                                <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
-                                    My Charges
-                                </a>
+                                @if(Auth::user()->admin_type !== 'super_admin' && Auth::user()->admin_type !== 'hr')
+                                    <a class="dropdown-item {{ request()->routeIs('admin.cash-charges.index') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
+                                        My Charges
+                                    </a>
+                                @endif
                             </div>
                         </div>
                     @endif
@@ -754,7 +738,7 @@
                     <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
                         <i class="fas fa-hand-holding-usd"></i> Cash Advance
                     </a>
-                    @if(Auth::user()->role === 'finance_officer')
+                    @if(Auth::user()->role === 'finance_officer' && Auth::user()->canApplyForCashAdvance())
                         <a class="nav-link {{ request()->routeIs('cash-advances.*') && request('scope') === 'my' ? 'active' : '' }}" href="{{ route('cash-advances.index', ['scope' => 'my']) }}">
                             <i class="fas fa-user-check"></i> My Cash Advance
                         </a>
@@ -792,9 +776,11 @@
                     <a class="nav-link {{ request()->routeIs('employee.payslips') ? 'active' : '' }}" href="{{ route('employee.payslips') }}">
                         <i class="fas fa-file-invoice-dollar"></i> My Payslips
                     </a>
-                    <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
-                        <i class="fas fa-hand-holding-usd"></i> Cash Advance
-                    </a>
+                    @if(Auth::user()->canApplyForCashAdvance())
+                        <a class="nav-link {{ request()->routeIs('cash-advances.*') ? 'active' : '' }}" href="{{ route('cash-advances.index') }}">
+                            <i class="fas fa-hand-holding-usd"></i> Cash Advance
+                        </a>
+                    @endif
                     <a class="nav-link {{ request()->routeIs('admin.cash-charges.*') ? 'active' : '' }}" href="{{ route('admin.cash-charges.index', ['scope' => 'my']) }}">
                         <i class="fas fa-wallet"></i> Cash Charges
                     </a>
@@ -846,11 +832,20 @@
                         @endif
                     </div>
                     @forelse($headerNotifications as $notification)
-                        <a href="{{ route('notifications.read', $notification->id) }}" class="dropdown-item notification-item {{ $notification->read_at ? '' : 'unread' }} py-2">
-                            <strong class="d-block">{{ $notification->data['title'] ?? 'Notification' }}</strong>
-                            <span class="d-block">{{ $notification->data['message'] ?? '' }}</span>
-                            <small>{{ $notification->created_at->diffForHumans() }}</small>
-                        </a>
+                        <div class="notification-row border-bottom">
+                            <a href="{{ route('notifications.read', $notification->id) }}" class="dropdown-item notification-item {{ $notification->read_at ? '' : 'unread' }} py-2">
+                                <strong class="d-block">{{ $notification->data['title'] ?? 'Notification' }}</strong>
+                                <span class="d-block">{{ $notification->data['message'] ?? '' }}</span>
+                                <small>{{ $notification->created_at->diffForHumans() }}</small>
+                            </a>
+                            <form method="POST" action="{{ route('notifications.destroy', $notification->id) }}" class="notification-delete-form">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit" class="btn btn-sm btn-link notification-delete-button p-1" aria-label="Delete notification" title="Delete notification">
+                                    <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                                </button>
+                            </form>
+                        </div>
                     @empty
                         <div class="px-3 py-4 text-center text-muted">No notifications yet.</div>
                     @endforelse

@@ -712,7 +712,7 @@ class EmployeeFingerprintRegistrationOnEditTest extends TestCase
             ->get(route('leave.create'))
             ->assertOk()
             ->assertSee('Status: Regular')
-            ->assertSee('3 / 3.0 days');
+            ->assertSee('3 / 3 days');
     }
 
     public function test_branch_admin_employee_status_change_sends_system_admin_notification(): void

@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 
 class AuthController extends Controller
 {
@@ -98,12 +99,21 @@ class AuthController extends Controller
             'email' => 'required|email',
             'password' => 'required',
         ]);
+
+        $throttleKey = $this->loginThrottleKey($request);
+        $lockoutKey = $throttleKey . ':lockout';
+        if (RateLimiter::tooManyAttempts($lockoutKey, 1)) {
+            return $this->loginLockoutResponse($request, RateLimiter::availableIn($lockoutKey));
+        }
         
         $user = User::where('email', $request->email)->first();
         
         // Check if account exists
         if (!$user) {
             $this->recordLoginHistory($request, null, 'failed', 'Unknown email');
+            if ($this->recordFailedLoginAttempt($throttleKey, $lockoutKey)) {
+                return $this->loginLockoutResponse($request, RateLimiter::availableIn($lockoutKey));
+            }
             return back()->withErrors(['email' => 'Invalid credentials']);
         }
         
@@ -116,6 +126,8 @@ class AuthController extends Controller
         }
         
         if (Auth::attempt(['email' => $request->email, 'password' => $request->password])) {
+            RateLimiter::clear($throttleKey);
+            RateLimiter::clear($lockoutKey);
             $user = Auth::user();
             
             // Determine branch based on role and profile
@@ -179,7 +191,41 @@ class AuthController extends Controller
         }
         
         $this->recordLoginHistory($request, $user, 'failed', 'Invalid credentials');
+        if ($this->recordFailedLoginAttempt($throttleKey, $lockoutKey)) {
+            return $this->loginLockoutResponse($request, RateLimiter::availableIn($lockoutKey));
+        }
         return back()->withErrors(['email' => 'Invalid credentials']);
+    }
+
+    private function loginThrottleKey(Request $request): string
+    {
+        $identity = mb_strtolower(trim((string) $request->input('email'))) . '|' . $request->ip();
+
+        return 'login:'.hash('sha256', $identity);
+    }
+
+    private function recordFailedLoginAttempt(string $throttleKey, string $lockoutKey): bool
+    {
+        RateLimiter::hit($throttleKey, 180);
+
+        if (RateLimiter::attempts($throttleKey) < 5) {
+            return false;
+        }
+
+        RateLimiter::clear($throttleKey);
+        RateLimiter::hit($lockoutKey, 180);
+
+        return true;
+    }
+
+    private function loginLockoutResponse(Request $request, int $seconds)
+    {
+        $seconds = max(1, $seconds);
+
+        return back()
+            ->withInput($request->only('email'))
+            ->withErrors(['email' => 'Too many failed login attempts. Please wait for the countdown before trying again.'])
+            ->with('login_lockout_seconds', $seconds);
     }
     
     public function logout(Request $request)

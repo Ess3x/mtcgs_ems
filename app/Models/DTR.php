@@ -88,15 +88,22 @@ class DTR extends Model
             return 0;
         }
 
-        $lateMinutes = (int) ($log->late_minutes ?? 0);
-        if ($lateMinutes <= 0) {
-            return 0;
-        }
-
         $amIn = $log->am_in instanceof Carbon ? $log->am_in : ($log->am_in ? Carbon::parse($log->am_in) : null);
         $pmIn = $log->pm_in instanceof Carbon ? $log->pm_in : ($log->pm_in ? Carbon::parse($log->pm_in) : null);
 
         if (($amIn && ($amIn->hour < 5 || $amIn->hour >= 18)) || ($pmIn && ($pmIn->hour < 12 || $pmIn->hour >= 20))) {
+            return 0;
+        }
+
+        if ($amIn) {
+            $start = $log->employeeProfile?->shift?->start_time ?: '08:00:00';
+            $scheduledStart = $amIn->copy()->setTimeFromTimeString($start);
+
+            return \App\Services\AttendanceTimeRules::lateMinutes($amIn, $scheduledStart);
+        }
+
+        $lateMinutes = (int) ($log->late_minutes ?? 0);
+        if ($lateMinutes <= 0) {
             return 0;
         }
 
@@ -121,6 +128,7 @@ class DTR extends Model
         $today = Carbon::today();
 
         $daysPresent = 0;
+        $halfDayDays = 0;
         $daysAbsent = 0;
         $paidLeaveDays = 0;
         $leaveWithoutPayDays = 0;
@@ -148,6 +156,11 @@ class DTR extends Model
 
         $current = $this->period_start->copy();
         while ($current <= $this->period_end) {
+            if ($workingDayService->isSuspension($current, $branchId)) {
+                $current->addDay();
+                continue;
+            }
+
             if ($workingDayService->isWorkingDay($current, $branchId) || $logsByDate->has($current->format('Y-m-d'))) {
                 $dateStr = $current->format('Y-m-d');
                 $log = $logsByDate->get($dateStr);
@@ -166,20 +179,10 @@ class DTR extends Model
                     $daysAbsent++;
                 } elseif ($log) {
                     $daysPresent++;
-                    $normalizedLateMinutes = self::normalizeLateMinutesForLog($log);
-                    $isValidMorningIn = $log->am_in
-                        && $log->am_in->hour >= 5
-                        && $log->am_in->hour < 18;
-                    if ($isValidMorningIn) {
-                        $scheduledStart = $log->am_in->copy()->setTime(7, 0, 0);
-                        if ($log->am_in->greaterThanOrEqualTo($scheduledStart)) {
-                            $lateMinutesTotal += max($normalizedLateMinutes, (int) $scheduledStart->diffInMinutes($log->am_in));
-                        } else {
-                            $lateMinutesTotal += $normalizedLateMinutes;
-                        }
-                    } else {
-                        $lateMinutesTotal += $normalizedLateMinutes;
+                    if ($log->getDtrStatus() === 'Half Day') {
+                        $halfDayDays++;
                     }
+                    $lateMinutesTotal += self::normalizeLateMinutesForLog($log);
                     $minutes = 0;
                     if ($log->am_in && $log->am_out) {
                         $minutes += $log->am_in->diffInMinutes($log->am_out);
@@ -193,9 +196,7 @@ class DTR extends Model
                     $totalHours += $minutes / 60;
 
                     if ($log->pm_out) {
-                        $scheduledPmOut = $log->pm_out->copy()->setTimeFromTimeString(
-                            $log->employeeProfile?->shift?->end_time ?: '17:00:00'
-                        );
+                        $scheduledPmOut = $log->pm_out->copy()->setTime(17, 0, 0);
                         if ($log->pm_out->lt($scheduledPmOut)) {
                             $earlyOutMinutes += max(0, abs($scheduledPmOut->diffInMinutes($log->pm_out)));
                         }
@@ -213,6 +214,7 @@ class DTR extends Model
 
         $this->runtimeBreakdown = [
             'days_present' => $daysPresent,
+            'half_day_days' => $halfDayDays,
             'days_absent' => $daysAbsent,
             'paid_leave' => $paidLeaveDays,
             'leave_without_pay' => $leaveWithoutPayDays,
@@ -241,6 +243,7 @@ class DTR extends Model
 
         return [
             'days_present' => (int) ($runtime['days_present'] ?? $this->days_present ?? 0),
+            'half_day_days' => (int) ($runtime['half_day_days'] ?? 0),
             'days_absent' => (int) ($runtime['days_absent'] ?? $this->days_absent ?? 0),
             'paid_leave' => (int) ($runtime['paid_leave'] ?? 0),
             'leave_without_pay' => (int) ($runtime['leave_without_pay'] ?? 0),

@@ -4,34 +4,28 @@
 
 @section('content')
 <div class="container-fluid calendar-page-section">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex align-items-center">
-                <a href="{{ route('calendar.index') }}" class="btn btn-outline-secondary me-3">
-                    <i class="fas fa-arrow-left me-2"></i>Back to Calendar
-                </a>
-                <div>
-                    <h2 class="mb-0 fw-bold">
-                        <i class="fas fa-plus text-primary me-2"></i>Create Calendar Event
-                    </h2>
-                    <p class="text-muted mb-0">Add a new school activity or holiday</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Create Form -->
     <div class="row justify-content-center">
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm">
                 <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4 pb-3 border-bottom">
+                        <div>
+                            <h2 class="mb-0 fw-bold">
+                                <i class="fas fa-plus text-primary me-2"></i>Create Calendar Event
+                            </h2>
+                            <p class="text-muted mb-0">Add a new school activity or holiday</p>
+                        </div>
+                        <a href="{{ route('calendar.index') }}" class="btn btn-outline-secondary">
+                            <i class="fas fa-arrow-left me-2"></i>Back to Calendar
+                        </a>
+                    </div>
+
                     <form method="POST" action="{{ route('admin.calendar.store') }}">
                         @csrf
 
                         <div class="row mb-3">
                             <div class="col-md-6">
-                                <label for="title" class="form-label fw-bold">Event Title <span class="text-danger">*</span></label>
+                                <label for="title" class="form-label fw-bold"><span id="event-title-label">Event Title</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control @error('title') is-invalid @enderror"
                                        id="title" name="title" value="{{ old('title') }}" required>
                                 @error('title')
@@ -39,12 +33,13 @@
                                 @enderror
                             </div>
                             <div class="col-md-6">
-                                <label for="event_type" class="form-label fw-bold">Event Type <span class="text-danger">*</span></label>
+                                <label for="event_type" class="form-label fw-bold"><span id="event-type-label">Event Type</span> <span class="text-danger">*</span></label>
                                 <select class="form-select @error('event_type') is-invalid @enderror"
                                         id="event_type" name="event_type" required>
                                     <option value="">Select Type</option>
                                     <option value="activity" {{ old('event_type') === 'activity' ? 'selected' : '' }}>School Activity</option>
                                     <option value="holiday" {{ old('event_type') === 'holiday' ? 'selected' : '' }}>Holiday</option>
+                                    <option value="suspension" {{ old('event_type') === 'suspension' ? 'selected' : '' }}>Suspension</option>
                                 </select>
                                 @error('event_type')
                                     <div class="invalid-feedback">{{ $message }}</div>
@@ -53,7 +48,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label for="event_date" class="form-label fw-bold">Event Date <span class="text-danger">*</span></label>
+                            <label for="event_date" class="form-label fw-bold"><span id="event-date-label">Event Date</span> <span class="text-danger">*</span></label>
                             <input type="date" class="form-control @error('event_date') is-invalid @enderror"
                                    id="event_date" name="event_date" value="{{ old('event_date') }}"
                                    min="{{ date('Y-m-d') }}" required>
@@ -129,19 +124,7 @@
 @push('styles')
 <style>
     .calendar-page-section {
-        margin-top: -120px;
-    }
-
-    @media (max-width: 992px) {
-        .calendar-page-section {
-            margin-top: -90px;
-        }
-    }
-
-    @media (max-width: 768px) {
-        .calendar-page-section {
-            margin-top: -70px;
-        }
+        margin-top: 1.5rem;
     }
 </style>
 @endpush
@@ -153,6 +136,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const dateInput = document.getElementById('event_date');
     const today = new Date().toISOString().split('T')[0];
     dateInput.setAttribute('min', today);
+
+    const typeInput = document.getElementById('event_type');
+    const labelsByType = {
+        activity: ['Activity Title', 'Activity Type', 'Activity Date'],
+        holiday: ['Holiday Name', 'Holiday Type', 'Holiday Date'],
+        suspension: ['Suspension Title', 'Suspension Type', 'Suspension Date']
+    };
+
+    function updateEventLabels() {
+        const labels = labelsByType[typeInput.value] || ['Event Title', 'Event Type', 'Event Date'];
+        document.getElementById('event-title-label').textContent = labels[0];
+        document.getElementById('event-type-label').textContent = labels[1];
+        document.getElementById('event-date-label').textContent = labels[2];
+    }
+
+    typeInput.addEventListener('change', updateEventLabels);
+    updateEventLabels();
 });
 </script>
 @endpush

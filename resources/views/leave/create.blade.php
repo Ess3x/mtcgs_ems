@@ -30,7 +30,7 @@
                         @if(in_array($profile->status ?? 'New Hire', ['New Hire'], true))
                             <p class="small mb-3">You may submit a leave request, but you currently have no leave credits.</p>
                         @elseif(in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true))
-                            <p class="small mb-3">You may avail of sick, vacation, emergency, birthday, maternity, and paternity leave.</p>
+                            <p class="small mb-3">You may avail of sick, vacation, emergency, birthday, maternity, paternity, and Service Incentive Leave.</p>
                         @else
                             <p class="small mb-3">You may avail of sick, vacation, emergency, and birthday leave based on your available credits.</p>
                         @endif
@@ -59,6 +59,10 @@
                                 <small class="d-block text-muted">Paternity Leave</small>
                                 <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailablePaternityLeave() }} / {{ (int) $leaveBalance->paternity_leave_total }} days</strong>
                             </div>
+                            <div class="col-md-4 mb-2">
+                                <small class="d-block text-muted">Service Incentive Leave</small>
+                                <strong class="d-block fs-5">{{ (int) $leaveBalance->getAvailableServiceIncentiveLeave() }} / {{ (int) $leaveBalance->service_incentive_leave_total }} days</strong>
+                            </div>
                         </div>
                     </div>
 
@@ -76,6 +80,7 @@
                                             <option value="birthday" {{ old('leave_type') === 'birthday' ? 'selected' : '' }}>Birthday Leave</option>
                                             <option value="maternity" {{ old('leave_type') === 'maternity' ? 'selected' : '' }} {{ in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true) ? '' : 'disabled' }}>Maternity Leave</option>
                                             <option value="paternity" {{ old('leave_type') === 'paternity' ? 'selected' : '' }} {{ in_array($profile->status ?? '', ['3+ Years of Service', '3+ Year of Service', 'Branch Head'], true) ? '' : 'disabled' }}>Paternity Leave</option>
+                                            <option value="service_incentive" {{ old('leave_type') === 'service_incentive' ? 'selected' : '' }}>Service Incentive Leave</option>
                                         </select>
                                     </div>
                                 </div>

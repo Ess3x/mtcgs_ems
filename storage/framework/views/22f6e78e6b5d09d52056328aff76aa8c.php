@@ -52,10 +52,14 @@
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Period</p>
                     <h6 class="mb-3"><?php echo e($dtr->period_start->format('M d')); ?> - <?php echo e($dtr->period_end->format('M d, Y')); ?></h6>
-                    <span class="badge bg-<?php echo e($dtr->status === 'draft' ? 'warning' : ($dtr->status === 'submitted' ? 'info' : ($dtr->status === 'approved' ? 'success' : 'danger'))); ?> p-2">
-                        <?php echo e(ucfirst($dtr->status)); ?>
+                    <?php if($dtr->status === 'pending_finance_head'): ?>
+                        <span class="badge bg-info text-dark p-2">Approved by HR - Awaiting FH Computation</span>
+                    <?php else: ?>
+                        <span class="badge bg-<?php echo e($dtr->status === 'draft' ? 'warning' : ($dtr->status === 'submitted' ? 'info' : ($dtr->status === 'approved' ? 'success' : 'danger'))); ?> p-2">
+                            <?php echo e(ucwords(str_replace('_', ' ', $dtr->status))); ?>
 
-                    </span>
+                        </span>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -91,8 +95,8 @@
         </div>
     </div>
 
-    <div class="row mb-4 g-3 dtr-extra-summary-grid">
-        <div class="col-md-3 dtr-summary-card dtr-summary-card">
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-3 mb-4 g-3 dtr-extra-summary-grid">
+        <div class="col dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Absent</p>
@@ -100,7 +104,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3 dtr-summary-card">
+        <div class="col dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Paid Leave</p>
@@ -108,7 +112,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3 dtr-summary-card">
+        <div class="col dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Total Leave Without Pay</p>
@@ -116,7 +120,39 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-3 dtr-summary-card">
+        <div class="col dtr-summary-card">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Holidays</p>
+                    <h4 class="mb-0 text-warning"><?php echo e($stats['total_holidays'] ?? 0); ?></h4>
+                </div>
+            </div>
+        </div>
+        <div class="col dtr-summary-card">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Suspensions</p>
+                    <h4 class="mb-0 text-danger"><?php echo e($stats['total_suspensions'] ?? 0); ?></h4>
+                </div>
+            </div>
+        </div>
+        <div class="col dtr-summary-card">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Halfdays</p>
+                    <h4 class="mb-0 text-warning"><?php echo e($stats['total_half_days'] ?? 0); ?></h4>
+                </div>
+            </div>
+        </div>
+        <div class="col dtr-summary-card">
+            <div class="card h-100">
+                <div class="card-body text-center">
+                    <p class="text-muted mb-2">Total Suspended Hours</p>
+                    <h4 class="mb-0 text-danger"><?php echo e(number_format($stats['total_suspended_hours'] ?? 0, 1)); ?> hrs</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col dtr-summary-card">
             <div class="card h-100">
                 <div class="card-body text-center">
                     <p class="text-muted mb-2">Early Out</p>
@@ -280,6 +316,10 @@
             background-color: #fef3c7;
             color: #92400e;
         }
+        .dtr-status-suspension {
+            background-color: #dc3545;
+            color: #ffffff;
+        }
         .dtr-status-half-day {
             background-color: #fed7aa;
             color: #9a3412;
@@ -402,6 +442,7 @@
                                             $isLeave = $day['status'] === 'leave';
                                             $isWeekend = $day['is_weekend'];
                                             $isHoliday = ($day['status'] ?? null) === 'holiday' || ($day['is_holiday'] ?? false);
+                                            $isSuspension = ($day['status'] ?? null) === 'suspension' || ($day['is_suspension'] ?? false);
                                             $attendanceStatus = $day['log'] ? $day['log']->getDtrStatus() : null;
                                             $isNoRecordYet = false;
                                             $isAbsent = ($day['status'] ?? null) === 'absent';
@@ -410,11 +451,11 @@
                                             $isLate = $attendanceStatus && str_contains($attendanceStatus, 'Late');
                                             $isEarlyOutStatus = $attendanceStatus && str_contains($attendanceStatus, 'Early Out');
                                             $isHalfDay = $attendanceStatus === 'Half Day';
-                                            $isLateTimeIn = $isLate || (int) ($day['late_minutes'] ?? 0) > 0;
-                                            $rowClass = $isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : '')))));
-                                            $displayStatus = $isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : ($isNoRecordYet ? '' : 'Present'))))))));
-                                            $isEarlyOut = !empty($day['pm_out']) && $day['pm_out'] !== '--' && strtotime($day['pm_out']) < strtotime('17:00');
-                                            $canRequestCorrection = $day['log']
+                                            $isLateTimeIn = !$isSuspension && ($isLate || (int) ($day['late_minutes'] ?? 0) > 0);
+                                            $rowClass = $isSuspension ? 'dtr-status-suspension' : ($isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : ''))))));
+                                            $displayStatus = $isSuspension ? 'Suspension' : ($isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : ($isNoRecordYet ? '' : 'Present')))))))));
+                                            $isEarlyOut = !$isSuspension && !empty($day['pm_out']) && $day['pm_out'] !== '--' && strtotime($day['pm_out']) < strtotime('17:00');
+                                            $canRequestCorrection = !$isSuspension && $day['log']
                                                 && in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out'], true)
                                                 && !in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true);
                                             $correctionFormId = 'attendance-correction-' . ($day['log']->id ?? $day['date']->format('Ymd'));
@@ -457,6 +498,8 @@
                                                     background-color: #92EEFF; color: #111; font-weight: 700;
                                                 <?php elseif($isHoliday && !$day['log']): ?>
                                                     background-color: #fef3c7; color: #92400e; font-weight: 700;
+                                                <?php elseif($isSuspension): ?>
+                                                    background-color: #dc3545; color: #ffffff; font-weight: 700;
                                                 <?php elseif($isHalfDay): ?>
                                                     background-color: #fed7aa; color: #9a3412; font-weight: 700;
                                                 <?php elseif($isAbsent): ?>
@@ -475,6 +518,8 @@
                                                     LWOP
                                                 <?php elseif($isLeave): ?>
                                                     Leave Paid
+                                                <?php elseif($isSuspension): ?>
+                                                    Suspension
                                                 <?php elseif($isHoliday && !$day['log']): ?>
                                                     Holiday
                                                 <?php elseif($isHalfDay): ?>

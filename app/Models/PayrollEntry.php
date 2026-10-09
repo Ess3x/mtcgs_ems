@@ -13,8 +13,8 @@ class PayrollEntry extends Model
         'overtime_pay', 'overtime_hours', 'days_present', 'days_absent',
         'late_deduction', 'absent_deduction', 'leave_deduction', 'allowances', 'bonuses', 'gross_pay',
         'sss_contribution', 'philhealth_contribution', 'pagibig_contribution',
-        'withholding_tax', 'cash_advance_deduction', 'total_deductions', 'net_pay', 'status', 'payroll_breakdown',
-        'payslip_sent_at', 'payslip_sent_to'
+        'withholding_tax', 'cash_advance_deduction', 'cash_charge_id', 'cash_charge_deduction', 'total_deductions', 'net_pay', 'status', 'payroll_breakdown',
+        'payslip_published_at', 'payslip_sent_at', 'payslip_sent_to'
         , 'correction_stage', 'correction_reason', 'correction_returned_by', 'correction_returned_at'
     ];
     
@@ -25,6 +25,8 @@ class PayrollEntry extends Model
         'total_deductions' => 'decimal:2',
         'net_pay' => 'decimal:2',
         'cash_advance_deduction' => 'decimal:2',
+        'cash_charge_deduction' => 'decimal:2',
+        'payslip_published_at' => 'datetime',
         'payslip_sent_at' => 'datetime',
         'correction_returned_at' => 'datetime',
     ];

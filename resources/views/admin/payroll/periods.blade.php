@@ -111,6 +111,29 @@
         filter: invert(1) grayscale(100%) brightness(200%);
     }
 
+    body.dark-mode #statsContainer .card {
+        background-color: #9132a8 !important;
+        border-color: #9132a8 !important;
+        color: #fff !important;
+    }
+
+    body.dark-mode #statsContainer .card small,
+    body.dark-mode #statsContainer .card h3 {
+        color: #fff !important;
+    }
+
+    body.dark-mode #periodsContainer table tbody tr,
+    body.dark-mode #periodsContainer table tbody td {
+        background-color: #1e293b !important;
+        border-color: #334155 !important;
+        color: #f8fafc !important;
+    }
+
+    body.dark-mode #periodsContainer table.table-hover tbody tr:hover,
+    body.dark-mode #periodsContainer table.table-hover tbody tr:hover td {
+        background-color: #273449 !important;
+    }
+
     #periodsContainer table th:last-child,
     #periodsContainer table td:last-child {
         min-width: 190px;

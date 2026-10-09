@@ -59,11 +59,18 @@
                 }
             @endphp
             <table class="table table-hover mb-0">
-                <thead><tr><th>Employee</th><th>Amount</th><th>Remaining After This Advance</th><th>Purpose</th><th>Status</th><th>Action</th></tr></thead>
+                <thead><tr><th>Employee</th><th>Applied Date</th><th>Amount</th><th>Remaining After This Advance</th><th>Purpose</th><th>Status</th><th>Action</th></tr></thead>
                 <tbody>
                 @forelse($applications as $application)
                     <tr>
                         <td>{{ $application->employeeProfile->first_name }} {{ $application->employeeProfile->last_name }}<br><small class="text-muted">{{ $application->employeeProfile->employee_number }}</small></td>
+                        <td>
+                            @if(strtolower(trim((string) ($application->employeeProfile->status ?? ''))) !== 'new hire')
+                                {{ $application->created_at?->format('M d, Y h:i A') ?? '--' }}
+                            @else
+                                --
+                            @endif
+                        </td>
                         <td>₱{{ number_format($application->approved_amount ?: $application->requested_amount, 2) }}</td>
                         @php
                             $cashAdvanceAmount = (float) ($application->approved_amount ?: $application->requested_amount);
@@ -95,7 +102,7 @@
                         </td>
                     </tr>
                 @empty
-                    <tr><td colspan="6" class="text-center text-muted py-4">No cash advance applications for this account or review stage.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">No cash advance applications for this account or review stage.</td></tr>
                 @endforelse
                 </tbody>
             </table>

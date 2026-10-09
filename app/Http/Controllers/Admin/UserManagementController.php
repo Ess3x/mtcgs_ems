@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\EmployeeProfile;
 use App\Models\FinanceProfile;
 use App\Models\AdminProfile;
+use App\Models\BranchHeadProfile;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -92,6 +93,30 @@ class UserManagementController extends Controller
             'employees', 'financeOfficers', 'admins',
             'activeCount', 'inactiveCount', 'totalUsers', 'pendingFinanceChanges'
         ));
+    }
+
+    public function profile(string $type, int $id)
+    {
+        $currentUser = Auth::user();
+        abort_unless($currentUser->role === 'admin', 403);
+
+        $profileClass = match (strtolower($type)) {
+            'employee', 'employeeprofile' => EmployeeProfile::class,
+            'finance', 'financeprofile' => FinanceProfile::class,
+            'admin', 'adminprofile' => AdminProfile::class,
+            'branchhead', 'branchheadprofile' => BranchHeadProfile::class,
+            default => abort(404),
+        };
+
+        $profile = $profileClass::with(['branch', 'user'])->findOrFail($id);
+
+        if ($currentUser->admin_type === 'branch_admin') {
+            $branchId = $currentUser->getEffectiveBranchId();
+            $profileBranchId = $profile->branch_id ?? $profile->user?->branch_id;
+            abort_unless($branchId && (int) $profileBranchId === (int) $branchId, 404);
+        }
+
+        return view('finance.employee-profile', compact('profile'));
     }
     
     public function edit($role, $id)

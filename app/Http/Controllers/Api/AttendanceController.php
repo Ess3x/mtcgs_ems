@@ -63,10 +63,29 @@ class AttendanceController extends Controller
             $attendanceType = $request->attendance_type;
 
             // Get or create today's attendance record
-            $attendance = AttendanceLog::firstOrNew([
-                'employee_profile_id' => $employee->id,
-                'attendance_date' => $today
-            ]);
+            $attendance = AttendanceLog::where('employee_profile_id', $employee->id)
+                ->whereDate('attendance_date', $today->toDateString())
+                ->first();
+            if (!$attendance) {
+                $attendance = new AttendanceLog([
+                    'employee_profile_id' => $employee->id,
+                    'attendance_date' => $today,
+                ]);
+            }
+            $allowSuspensionTimeOut = in_array($attendanceType, ['am_out', 'pm_out'], true)
+                && $attendance->am_in
+                && ($attendanceType !== 'pm_out' || !$attendance->pm_out);
+
+            if (app(\App\Services\WorkingDayService::class)->isSuspension($today, $employee->branch_id)
+                && !$allowSuspensionTimeOut) {
+                $message = 'Attendance is not allowed because work is suspended today.';
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'attendance_blocked' => true,
+                    'date' => $today->toDateString(),
+                ], 403);
+            }
 
             // Check attendance type and update accordingly
             switch ($attendanceType) {
@@ -137,14 +156,10 @@ class AttendanceController extends Controller
             if ($attendanceType === 'am_in') {
                 $scheduledTime = $employee->shift
                     ? Carbon::today()->setTimeFromTimeString($employee->shift->start_time)
-                    : Carbon::createFromTime(7, 0, 0);
+                    : Carbon::createFromTime(8, 0, 0);
                 $actualTime = Carbon::parse($attendance->am_in);
 
-                if ($actualTime->greaterThanOrEqualTo($scheduledTime)) {
-                    $attendance->late_minutes = $actualTime->diffInMinutes($scheduledTime);
-                } else {
-                    $attendance->late_minutes = 0;
-                }
+                $attendance->late_minutes = \App\Services\AttendanceTimeRules::lateMinutes($actualTime, $scheduledTime);
             }
 
             // Calculate overtime if this is PM time-out

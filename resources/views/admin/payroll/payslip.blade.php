@@ -495,11 +495,16 @@
         ];
         $dailyRate = (float) ($breakdown['daily_rate'] ?? 0);
         $totalDailyRate = (float) ($breakdown['total_daily_rate'] ?? (($entry->days_present ?? 0) * $dailyRate));
+        $suspendedHoursToPay = (float) ($breakdown['suspended_hours_to_pay'] ?? 0);
+        $suspensionPay = (float) ($breakdown['suspension_pay'] ?? 0);
+        $holidayBonus = (float) ($breakdown['holiday_bonus'] ?? 0);
+        $halfDayDeduction = (float) ($breakdown['half_day_deduction'] ?? 0);
         $earlyOutDeduction = (float) ($breakdown['early_out_deduction'] ?? 0);
         $leaveWithoutPayDays = (int) ($dtrStats['leave_without_pay'] ?? 0);
         $paidLeaveDays = (int) ($dtrStats['paid_leave'] ?? 0);
         $leaveWithoutPayDeduction = $leaveWithoutPayDays * $dailyRate;
         $cashAdvanceDeduction = (float) ($entry->cash_advance_deduction ?? ($breakdown['cash_advance_deduction'] ?? 0));
+        $cashChargeDeduction = (float) ($entry->cash_charge_deduction ?? ($breakdown['cash_charge_deduction'] ?? 0));
         $isApprovedPayroll = in_array($entry->payrollPeriod?->status, ['approved', 'completed'], true);
     @endphp
     <div class="container">
@@ -551,6 +556,22 @@
                             <div class="attendance-summary-card">
                                 <div class="label">Leave Without Pay</div>
                                 <div class="value">{{ $dtrStats['leave_without_pay'] ?? 0 }}</div>
+                            </div>
+                            <div class="attendance-summary-card">
+                                <div class="label">Total Half Day</div>
+                                <div class="value">{{ $dtrStats['half_day_days'] ?? 0 }}</div>
+                            </div>
+                            <div class="attendance-summary-card">
+                                <div class="label">Total Holiday</div>
+                                <div class="value">{{ $dtrStats['total_holidays'] ?? 0 }}</div>
+                            </div>
+                            <div class="attendance-summary-card">
+                                <div class="label">Total Suspension</div>
+                                <div class="value">{{ $dtrStats['total_suspensions'] ?? 0 }}</div>
+                            </div>
+                            <div class="attendance-summary-card">
+                                <div class="label">Total Suspended Hours</div>
+                                <div class="value">{{ number_format((float) ($dtrStats['total_suspended_hours'] ?? 0), 2) }} hrs</div>
                             </div>
                         </div>
 
@@ -611,6 +632,18 @@
                                         <span class="item-label">Total Daily Rate</span>
                                         <span class="item-value">₱{{ number_format($totalDailyRate, 2) }}</span>
                                     </div>
+                                    @if($suspensionPay > 0)
+                                    <div class="item-row">
+                                        <span class="item-label">Suspended Work ({{ number_format($suspendedHoursToPay, 2) }} hrs)</span>
+                                        <span class="item-value">₱{{ number_format($suspensionPay, 2) }}</span>
+                                    </div>
+                                    @endif
+                                    @if($holidayBonus > 0)
+                                    <div class="item-row">
+                                        <span class="item-label">Holiday Bonus</span>
+                                        <span class="item-value">₱{{ number_format($holidayBonus, 2) }}</span>
+                                    </div>
+                                    @endif
                                     @if($entry->overtime_pay > 0)
                                     <div class="item-row">
                                         <span class="item-label">Overtime ({{ number_format($entry->overtime_hours, 2) }} hrs)</span>
@@ -645,6 +678,12 @@
                                         <span class="item-label">Absent Deduction</span>
                                         <span class="item-value">₱{{ number_format($entry->absent_deduction, 2) }}</span>
                                     </div>
+                                    @if($halfDayDeduction > 0)
+                                    <div class="item-row">
+                                        <span class="item-label">Half-Day Deduction</span>
+                                        <span class="item-value">₱{{ number_format($halfDayDeduction, 2) }}</span>
+                                    </div>
+                                    @endif
                                     <div class="item-row">
                                         <span class="item-label">Early Out Deduction</span>
                                         <span class="item-value">₱{{ number_format($earlyOutDeduction, 2) }}</span>
@@ -676,6 +715,10 @@
                                     <div class="item-row">
                                         <span class="item-label">Cash Advance Deduction</span>
                                         <span class="item-value">₱{{ number_format($cashAdvanceDeduction, 2) }}</span>
+                                    </div>
+                                    <div class="item-row">
+                                        <span class="item-label">Cash Charges Amount</span>
+                                        <span class="item-value">₱{{ number_format($cashChargeDeduction, 2) }}</span>
                                     </div>
                                     <div class="total-row" style="color: #dc3545; border-top-color: #dc3545; border-bottom-color: #dc3545;">
                                         <span>Total Deductions</span>

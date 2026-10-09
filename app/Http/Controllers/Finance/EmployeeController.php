@@ -38,39 +38,29 @@ class EmployeeController extends Controller
     public function index()
     {
         $branchId = $this->getBranchId();
-        $buhiBranch = Branch::where('branch_name', 'like', '%Buhi%')->first();
-        $branchIds = collect([$branchId, $buhiBranch?->id])->filter()->unique()->values();
+        $profileTypes = [
+            EmployeeProfile::class,
+            \App\Models\FinanceProfile::class,
+            \App\Models\AdminProfile::class,
+            \App\Models\BranchHeadProfile::class,
+        ];
 
-        // Finance users can view their branch plus the segregated Buhi list.
         $users = User::with(['profile', 'branch'])
             ->where('is_active', true)
-            ->where(function ($query) use ($branchIds) {
-                $query->whereIn('branch_id', $branchIds)
-                    ->orWhereHasMorph('profile', [
-                        EmployeeProfile::class,
-                        \App\Models\FinanceProfile::class,
-                        \App\Models\AdminProfile::class,
-                        \App\Models\BranchHeadProfile::class,
-                    ], function ($profileQuery) use ($branchIds) {
-                        $profileQuery->whereIn('branch_id', $branchIds);
-                    })
-                    ->orWhere(function ($adminQuery) {
-                        $adminQuery->where('role', 'admin')
-                            ->where(function ($typeQuery) {
-                                $typeQuery->whereIn('admin_type', ['super_admin', 'hr'])
-                                    ->orWhereNull('admin_type')
-                                    ->orWhere('admin_type', '');
-                            });
-                    });
+            ->where(function ($query) use ($branchId, $profileTypes) {
+                $query->whereHasMorph('profile', $profileTypes, function ($profileQuery) use ($branchId) {
+                    $profileQuery->where('branch_id', $branchId);
+                })->orWhere(function ($query) use ($branchId, $profileTypes) {
+                    $query->whereDoesntHaveMorph('profile', $profileTypes)
+                        ->where('branch_id', $branchId);
+                });
             })
             ->orderBy('name')
             ->get();
 
         $branchName = Branch::find($branchId)?->branch_name ?? 'Your Branch';
-        $buhiBranchId = $buhiBranch?->id;
-        $buhiBranchName = $buhiBranch?->branch_name ?? 'Buhi Branch';
         
-        return view('finance.employees', compact('users', 'branchId', 'branchName', 'buhiBranchId', 'buhiBranchName'));
+        return view('finance.employees', compact('users', 'branchId', 'branchName'));
     }
     
     public function attendance($id)

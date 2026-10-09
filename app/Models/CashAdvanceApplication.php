@@ -50,4 +50,24 @@ class CashAdvanceApplication extends Model
     {
         return $this->belongsTo(User::class, 'fh_reviewed_by');
     }
+
+    public function scopeEligibleForPayrollCutoff($query, int $employeeProfileId, $periodStart, $periodEnd)
+    {
+        return $query->where('employee_profile_id', $employeeProfileId)
+            ->whereIn('status', ['approved', 'deducting'])
+            ->whereColumn('deducted_installments', '<', 'installments')
+            ->where(function ($query) use ($periodStart, $periodEnd) {
+                $query->where(function ($applicationDate) use ($periodStart, $periodEnd) {
+                    $applicationDate->whereDate('created_at', '>=', $periodStart)
+                        ->whereDate('created_at', '<=', $periodEnd);
+                })->orWhere(function ($approvalDate) use ($periodStart, $periodEnd) {
+                    $approvalDate->whereDate('fh_reviewed_at', '>=', $periodStart)
+                        ->whereDate('fh_reviewed_at', '<=', $periodEnd);
+                });
+            })
+            ->where(function ($query) use ($periodEnd) {
+                $query->whereNull('fh_reviewed_at')
+                    ->orWhereDate('fh_reviewed_at', '<=', $periodEnd);
+            });
+    }
 }

@@ -97,11 +97,18 @@
     </ul>
 
     <style>
+        body.dark-mode .employee-management-page .employee-summary .card {
+            background-color: #8E1EA2 !important;
+            background-image: none !important;
+            border-color: #8E1EA2 !important;
+        }
+
         .employee-tabs {
             display: inline-flex;
             width: auto;
             max-width: 100%;
             overflow-x: auto;
+            overflow-y: hidden;
             background: transparent;
             border-bottom: 1px solid #dee2e6;
         }

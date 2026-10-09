@@ -7,12 +7,14 @@ use App\Models\LeaveBalance;
 use App\Models\CalendarEvent;
 use App\Models\CashCharge;
 use App\Models\EmployeeProfile;
+use App\Models\PayrollEntry;
 use App\Models\User;
 use App\Notifications\SystemNotification;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 
 class LeaveController extends Controller
 {
@@ -27,7 +29,10 @@ class LeaveController extends Controller
                     ->whereHas('employeeProfile.user', function($q) {
                         $q->where('is_active', true);
                     })
-                    ->latest()->paginate(20);
+                    ->orderByRaw("CASE WHEN status IN ('pending', 'pending_system_admin') THEN 0 ELSE 1 END")
+                    ->orderByDesc('updated_at')
+                    ->orderByDesc('id')
+                    ->paginate(20);
             } elseif (($user->role === 'admin' && $user->admin_type === 'branch_admin') || $user->role === 'branch_head') {
                 // Branch admin/Branch Head only sees leave requests from their branch ACTIVE employees
                 $adminProfile = $user->role === 'branch_head' ? $user->getBranchHeadProfile() : $user->getAdminProfile();
@@ -39,7 +44,10 @@ class LeaveController extends Controller
                     ->whereHas('employeeProfile.user', function($q) {
                         $q->where('is_active', true);
                     })
-                    ->latest()->paginate(20);
+                    ->orderByRaw("CASE WHEN status IN ('pending', 'pending_system_admin') THEN 0 ELSE 1 END")
+                    ->orderByDesc('updated_at')
+                    ->orderByDesc('id')
+                    ->paginate(20);
             } else {
                 // Fallback - show all for regular admins
                 $leaves = LeaveRequest::with('employeeProfile')
@@ -168,7 +176,7 @@ class LeaveController extends Controller
         }
         
         $request->validate([
-            'leave_type' => 'required|in:sick,vacation,emergency,birthday,maternity,paternity',
+            'leave_type' => 'required|in:sick,vacation,emergency,birthday,maternity,paternity,service_incentive',
             'start_date' => 'required|date|after_or_equal:today',
             'end_date' => 'required|date|after_or_equal:start_date',
             'reason' => 'required|min:5',
@@ -217,6 +225,8 @@ class LeaveController extends Controller
             $available = $leaveBalance->getAvailableMaternityLeave();
         } elseif ($request->leave_type == 'paternity') {
             $available = $leaveBalance->getAvailablePaternityLeave();
+        } elseif ($request->leave_type == 'service_incentive') {
+            $available = $leaveBalance->getAvailableServiceIncentiveLeave();
         }
         
         $isLeaveWithoutPay = $this->isNewHire($profile)
@@ -342,6 +352,7 @@ class LeaveController extends Controller
                 'birthday_leave_used' => 0,
                 'maternity_leave_used' => 0,
                 'paternity_leave_used' => 0,
+                'service_incentive_leave_used' => 0,
             ])
         );
 
@@ -386,6 +397,7 @@ class LeaveController extends Controller
             'cash_charge_total' => 0,
             'maternity_leave_total' => $hasParentalLeave ? $parentalCredits : 0,
             'paternity_leave_total' => $hasParentalLeave ? $parentalCredits : 0,
+            'service_incentive_leave_total' => 5,
         ];
     }
 
@@ -424,6 +436,7 @@ class LeaveController extends Controller
                     'cash_charge_used' => 0,
                     'maternity_leave_used' => 0,
                     'paternity_leave_used' => 0,
+                    'service_incentive_leave_used' => 0,
                 ])
             );
         }
@@ -447,6 +460,35 @@ class LeaveController extends Controller
             });
 
         return view('admin.leave-credits', compact('employees', 'groupedEmployees'));
+    }
+
+    private function attachRemainingCashChargeBalances($charges)
+    {
+        $approvedChargeIds = $charges
+            ->where('status', 'approved')
+            ->pluck('id');
+
+        $deductionsByCharge = $approvedChargeIds->isEmpty()
+            ? collect()
+            : PayrollEntry::query()
+                ->selectRaw('cash_charge_id, SUM(cash_charge_deduction) as total_deducted')
+                ->whereIn('cash_charge_id', $approvedChargeIds)
+                ->where('status', 'approved')
+                ->whereHas('payrollPeriod', function ($query) {
+                    $query->where('status', 'completed')
+                        ->whereNotNull('approved_at')
+                        ->whereNotNull('hr_approved_at')
+                        ->whereNotNull('branch_approved_at')
+                        ->where('admin_approval_stage', 'bh_approved')
+                        ->whereNull('correction_stage');
+                })
+                ->groupBy('cash_charge_id')
+                ->pluck('total_deducted', 'cash_charge_id');
+
+        return $charges->each(function ($charge) use ($deductionsByCharge) {
+            $deducted = (float) ($deductionsByCharge[$charge->id] ?? 0);
+            $charge->setAttribute('remaining_balance', round(max(0, (float) $charge->amount - $deducted), 2));
+        });
     }
 
     public function manageCashCharges()
@@ -507,6 +549,7 @@ class LeaveController extends Controller
                 !in_array($charge->status, ['pending_branch_admin', 'pending_super_admin'], true)
                 || in_array($charge->id, $latestPendingIds, true)
             )->values();
+            $myCharges = $this->attachRemainingCashChargeBalances($myCharges);
 
             return view('admin.cash-charges', [
                 'employees' => collect(),
@@ -560,6 +603,7 @@ class LeaveController extends Controller
                     'cash_charge_used' => 0,
                     'maternity_leave_used' => 0,
                     'paternity_leave_used' => 0,
+                    'service_incentive_leave_used' => 0,
                 ])
             );
         }
@@ -731,6 +775,7 @@ class LeaveController extends Controller
             'employee_id' => ['required', 'exists:employee_profiles,id'],
             'amount' => ['required', 'numeric', 'min:0.01', 'max:50000'],
             'reason' => ['required', 'string', 'min:5', 'max:1000'],
+            'evidence' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ]);
 
         $employee = EmployeeProfile::with('branch')->findOrFail($validated['employee_id']);
@@ -750,16 +795,47 @@ class LeaveController extends Controller
             abort_if($employee->branch_id !== ($profile?->branch_id ?? 0), 403, 'You can only add charges for your branch employees.');
         }
 
+        $evidencePath = $request->file('evidence')?->store('cash-charge-evidence', 'local');
+
         $charge = CashCharge::create([
             'employee_profile_id' => $employee->id,
             'branch_id' => $employee->branch_id,
             'amount' => (float) $validated['amount'],
             'reason' => $validated['reason'],
+            'evidence_path' => $evidencePath,
             'requested_by' => $user->id,
-            'status' => 'pending',
+            'status' => $user->role === 'admin' && ($user->admin_type ?? '') === 'super_admin'
+                ? 'pending_super_admin'
+                : 'pending',
         ]);
 
         return back()->with('success', 'Cash charge request submitted and awaiting Super Admin approval.');
+    }
+
+    public function cashChargeEvidence(CashCharge $cashCharge)
+    {
+        $user = Auth::user();
+        $profile = $user->getEmployeeProfile();
+
+        $canView = ($user->role === 'admin' && ($user->admin_type ?? '') === 'super_admin')
+            || ($user->role === 'admin' && ($user->admin_type ?? '') === 'branch_admin'
+                && $cashCharge->branch_id === ($user->getAdminProfile()?->branch_id ?? 0))
+            || ($user->role === 'branch_head'
+                && $cashCharge->branch_id === ($user->getBranchHeadProfile()?->branch_id ?? 0))
+            || ($user->role === 'finance_head'
+                && $cashCharge->branch_id === ($user->getFinanceProfile()?->branch_id ?? 0))
+            || ($user->role === 'finance_officer'
+                && $cashCharge->branch_id === ($user->getFinanceProfile()?->branch_id ?? 0))
+            || (in_array($user->role, ['employee', 'finance_officer'], true)
+                && ($cashCharge->requested_by === $user->id
+                    || ($profile && $cashCharge->employee_profile_id === $profile->id)));
+
+        abort_unless($canView, 403, 'You do not have access to this cash charge evidence.');
+        abort_unless($cashCharge->evidence_path && Storage::disk('local')->exists($cashCharge->evidence_path), 404);
+
+        return response()->file(Storage::disk('local')->path($cashCharge->evidence_path), [
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function approveCashCharge(Request $request, CashCharge $cashCharge)
@@ -989,6 +1065,7 @@ class LeaveController extends Controller
                 'cash_charge_used' => 0,
                 'maternity_leave_used' => 0,
                 'paternity_leave_used' => 0,
+                'service_incentive_leave_used' => 0,
             ]
         );
 
@@ -1007,9 +1084,9 @@ class LeaveController extends Controller
             'vacation_leave_total' => ['required', 'numeric', 'min:0', 'max:365'],
             'emergency_leave_total' => ['required', 'numeric', 'min:0', 'max:365'],
             'birthday_leave_total' => ['required', 'numeric', 'min:0', 'max:365'],
-            'cash_charge_total' => ['required', 'numeric', 'min:0', 'max:365'],
             'maternity_leave_total' => ['required', 'numeric', 'min:0', 'max:365'],
             'paternity_leave_total' => ['required', 'numeric', 'min:0', 'max:365'],
+            'service_incentive_leave_total' => ['required', 'numeric', 'min:0', 'max:365'],
         ]);
 
         $leaveBalance = LeaveBalance::firstOrCreate(
@@ -1025,12 +1102,13 @@ class LeaveController extends Controller
                 'cash_charge_used' => 0,
                 'maternity_leave_used' => 0,
                 'paternity_leave_used' => 0,
+                'service_incentive_leave_used' => 0,
             ]
         );
 
         $updatedCredits = [];
 
-        foreach (['sick_leave_total', 'vacation_leave_total', 'emergency_leave_total', 'birthday_leave_total', 'cash_charge_total', 'maternity_leave_total', 'paternity_leave_total'] as $field) {
+        foreach (['sick_leave_total', 'vacation_leave_total', 'emergency_leave_total', 'birthday_leave_total', 'maternity_leave_total', 'paternity_leave_total', 'service_incentive_leave_total'] as $field) {
             $value = (float) $validated[$field];
             $updatedCredits[$this->formatLeaveTypeLabel($field)] = $value;
             $leaveBalance->{$field} = $value;
@@ -1058,6 +1136,44 @@ class LeaveController extends Controller
         return back()->with('success', 'Leave credits updated for ' . $employee->first_name . ' ' . $employee->last_name . '.');
     }
 
+    public function resetUsedCredits(EmployeeProfile $employee)
+    {
+        $this->ensureSuperAdminAccess();
+
+        $leaveBalance = LeaveBalance::firstOrCreate(
+            [
+                'employee_profile_id' => $employee->id,
+                'year' => now()->year,
+            ],
+            [
+                'sick_leave_used' => 0,
+                'vacation_leave_used' => 0,
+                'emergency_leave_used' => 0,
+                'birthday_leave_used' => 0,
+                'cash_charge_used' => 0,
+                'maternity_leave_used' => 0,
+                'paternity_leave_used' => 0,
+                'service_incentive_leave_used' => 0,
+            ]
+        );
+
+        foreach ([
+            'sick_leave_used',
+            'vacation_leave_used',
+            'emergency_leave_used',
+            'birthday_leave_used',
+            'maternity_leave_used',
+            'paternity_leave_used',
+            'service_incentive_leave_used',
+        ] as $field) {
+            $leaveBalance->{$field} = 0;
+        }
+
+        $leaveBalance->save();
+
+        return back()->with('success', 'Used leave credits reset for ' . $employee->first_name . ' ' . $employee->last_name . '.');
+    }
+
     protected function formatLeaveTypeLabel(string $field): string
     {
         return match ($field) {
@@ -1065,9 +1181,9 @@ class LeaveController extends Controller
             'vacation_leave_total' => 'Vacation Leave',
             'emergency_leave_total' => 'Emergency Leave',
             'birthday_leave_total' => 'Birthday Leave',
-            'cash_charge_total' => 'Cash Charges',
             'maternity_leave_total' => 'Maternity Leave',
             'paternity_leave_total' => 'Paternity Leave',
+            'service_incentive_leave_total' => 'Service Incentive Leave',
             default => ucfirst(str_replace('_total', '', $field)),
         };
     }
@@ -1171,6 +1287,8 @@ class LeaveController extends Controller
                 $leaveBalance->maternity_leave_used += $leave->total_days;
             } elseif ($leave->leave_type == 'paternity') {
                 $leaveBalance->paternity_leave_used += $leave->total_days;
+            } elseif ($leave->leave_type == 'service_incentive') {
+                $leaveBalance->service_incentive_leave_used += $leave->total_days;
             }
             $leaveBalance->save();
         }

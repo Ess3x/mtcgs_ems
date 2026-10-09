@@ -29,7 +29,7 @@ class DTRManagementController
         }
 
         $pendingQuery = DTR::query()->with('employeeProfile');
-        // Keep approved DTRs visible as history, including DTRs already sent to the Finance Head.
+        // Keep HR-approved DTRs visible to the Finance Head while they await computation.
         $approvedStatuses = ($user->isBranchAdmin() || $user->isSuperAdmin() || $user->isFinanceHead())
             ? ['approved', 'pending_finance_head']
             : ['approved'];
@@ -57,7 +57,7 @@ class DTRManagementController
             $branchId = $financeProfile?->branch_id ?? $user->branch_id ?? 1;
 
             if ($user->isFinanceHead()) {
-                $pendingQuery->where('status', 'pending_finance_head');
+                $pendingQuery->whereRaw('0 = 1');
                 $pendingQuery->whereHas('employeeProfile', function ($query) use ($financeProfile) {
                     $query->where('branch_id', $financeProfile?->branch_id ?? Auth::user()->branch_id ?? 1);
                 });
@@ -105,7 +105,7 @@ class DTRManagementController
             if ($user->isFinanceHead()) {
                 $totalDTRsQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
                 $approvedDTRsCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId));
-                $pendingCountQuery->whereHas('employeeProfile', fn ($query) => $query->where('branch_id', $branchId))->where('status', 'pending_finance_head');
+                $pendingCountQuery->whereRaw('0 = 1');
             } elseif ($ownEmployeeId) {
                 $totalDTRsQuery->where('employee_profile_id', $ownEmployeeId);
                 $approvedDTRsCountQuery->where('employee_profile_id', $ownEmployeeId);
@@ -165,6 +165,7 @@ class DTRManagementController
         }
 
         $dtrs = $query->get();
+        $workingDayService = app(\App\Services\WorkingDayService::class);
 
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
@@ -217,6 +218,7 @@ class DTRManagementController
 
         $row = 5;
         $redFontCells = [];
+        $summaryRows = [];
 
         foreach ($dtrs as $dtr) {
             $employee = $dtr->employeeProfile;
@@ -243,6 +245,26 @@ class DTRManagementController
             $sheet->setCellValue('A' . $row, $employee?->first_name . ' ' . $employee?->last_name);
             $sheet->setCellValue('B' . $row, $employee?->employee_number);
 
+            $breakdown = $dtr->getCalculationBreakdown();
+            $earlyOutMinutes = $logsByDate->sum(function ($log) {
+                if (!$log->pm_out) {
+                    return 0;
+                }
+
+                $scheduledEnd = $log->pm_out->copy()->setTime(17, 0, 0);
+
+                return $log->pm_out->lt($scheduledEnd)
+                    ? (int) $log->pm_out->diffInMinutes($scheduledEnd)
+                    : 0;
+            });
+            $summaryRows[] = [
+                'employee' => $employee?->first_name . ' ' . $employee?->last_name,
+                'days_present' => $breakdown['days_present'],
+                'days_absent' => $breakdown['days_absent'],
+                'late_minutes' => (int) $dtr->late_minutes,
+                'early_out_minutes' => $earlyOutMinutes,
+            ];
+
             $columnIndex = 3;
             foreach ($periodHeaders as $headerDate) {
                 $dateStr = $headerDate->format('Y-m-d');
@@ -250,11 +272,15 @@ class DTRManagementController
                 $approvedLeave = $approvedLeaveByDate[$dateStr] ?? null;
                 $startColumn = Coordinate::stringFromColumnIndex($columnIndex);
                 $endColumn = Coordinate::stringFromColumnIndex($columnIndex + 1);
+                $branchId = $employee?->branch_id;
+                $isHoliday = $workingDayService->isHoliday($headerDate, $branchId);
+                $isSuspension = $workingDayService->isSuspension($headerDate, $branchId);
+                $hasAttendanceTime = $log && ($log->am_in || $log->am_out || $log->pm_in || $log->pm_out);
 
                 if ($approvedLeave) {
                     $sheet->mergeCells($startColumn . $row . ':' . $endColumn . $row);
                     $sheet->setCellValue($startColumn . $row, (bool) $approvedLeave->is_absent ? 'Leave Without Pay' : 'Paid Leave');
-                } elseif ($log) {
+                } elseif ($hasAttendanceTime) {
                     $sheet->setCellValue($startColumn . $row, $log->am_in ? $log->am_in->format('h:i A') : '--');
                     $sheet->setCellValue($endColumn . $row, $log->pm_out ? $log->pm_out->format('h:i A') : '--');
 
@@ -270,7 +296,10 @@ class DTRManagementController
                     }
                 } else {
                     $sheet->mergeCells($startColumn . $row . ':' . $endColumn . $row);
-                    $sheet->setCellValue($startColumn . $row, $headerDate->isPast() ? 'Absent' : 'Pending');
+                    $status = $isSuspension
+                        ? 'Suspension'
+                        : ($isHoliday ? 'Holiday' : ($headerDate->isPast() ? 'Absent' : 'Pending'));
+                    $sheet->setCellValue($startColumn . $row, $status);
                 }
 
                 $columnIndex += 2;
@@ -336,6 +365,14 @@ class DTRManagementController
                     $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
                     $style->getFill()->getStartColor()->setRGB('00B0F0');
                     $style->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+                } elseif (str_contains($value, 'Holiday')) {
+                    $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+                    $style->getFill()->getStartColor()->setRGB('FFFF00');
+                    $style->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('000000'));
+                } elseif (str_contains($value, 'Suspension')) {
+                    $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
+                    $style->getFill()->getStartColor()->setRGB('FF0000');
+                    $style->getFont()->setBold(true)->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('FFFFFF'));
                 } elseif (str_contains($value, 'Absent')) {
                     $style->getFill()->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID);
                     $style->getFill()->getStartColor()->setRGB('FF0000');
@@ -352,6 +389,69 @@ class DTRManagementController
                     'color' => ['rgb' => 'FF0000'],
                 ],
             ]);
+        }
+
+        $summaryTitleRow = $lastRow + 2;
+        $summaryHeaderRow = $summaryTitleRow + 1;
+        $summaryFirstDataRow = $summaryHeaderRow + 1;
+        $summaryTotalRow = $summaryFirstDataRow + count($summaryRows);
+        $sheet->mergeCells('A' . $summaryTitleRow . ':E' . $summaryTitleRow);
+        $sheet->setCellValue('A' . $summaryTitleRow, 'DTR SUMMARY BY EMPLOYEE');
+        $sheet->getStyle('A' . $summaryTitleRow . ':E' . $summaryTitleRow)->applyFromArray([
+            'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
+            'fill' => [
+                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '1F4E78'],
+            ],
+            'alignment' => ['horizontal' => 'center'],
+        ]);
+
+        $summaryHeaders = ['Employee', 'Days Present', 'Total Absent', 'Total Late (min)', 'Total Early Out (min)'];
+        foreach ($summaryHeaders as $index => $header) {
+            $column = Coordinate::stringFromColumnIndex($index + 1);
+            $sheet->setCellValue($column . $summaryHeaderRow, $header);
+        }
+        $sheet->getStyle('A' . $summaryHeaderRow . ':E' . $summaryHeaderRow)->applyFromArray([
+            'font' => ['bold' => true],
+            'fill' => [
+                'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                'startColor' => ['rgb' => 'D9EAF7'],
+            ],
+            'alignment' => ['horizontal' => 'center', 'wrapText' => true],
+        ]);
+
+        $grandTotals = ['days_present' => 0, 'days_absent' => 0, 'late_minutes' => 0, 'early_out_minutes' => 0];
+        foreach ($summaryRows as $index => $summary) {
+            $summaryRow = $summaryFirstDataRow + $index;
+            $sheet->fromArray([
+                $summary['employee'],
+                $summary['days_present'],
+                $summary['days_absent'],
+                $summary['late_minutes'],
+                $summary['early_out_minutes'],
+            ], null, 'A' . $summaryRow);
+
+            foreach ($grandTotals as $key => $total) {
+                $grandTotals[$key] += $summary[$key];
+            }
+        }
+
+        $sheet->fromArray([
+            'Grand Total',
+            $grandTotals['days_present'],
+            $grandTotals['days_absent'],
+            $grandTotals['late_minutes'],
+            $grandTotals['early_out_minutes'],
+        ], null, 'A' . $summaryTotalRow);
+        $sheet->getStyle('A' . $summaryTotalRow . ':E' . $summaryTotalRow)->getFont()->setBold(true);
+        $sheet->getStyle('A' . $summaryTitleRow . ':E' . $summaryTotalRow)->getBorders()->getAllBorders()
+            ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN)
+            ->setColor(new \PhpOffice\PhpSpreadsheet\Style\Color('7F8C8D'));
+        $sheet->getStyle('B' . $summaryFirstDataRow . ':E' . $summaryTotalRow)
+            ->getAlignment()->setHorizontal('center');
+        $sheet->getRowDimension($summaryHeaderRow)->setRowHeight(30);
+        foreach (range('A', 'E') as $column) {
+            $sheet->getColumnDimension($column)->setAutoSize(true);
         }
 
         $sheet->freezePane('A5');
@@ -544,17 +644,53 @@ class DTRManagementController
             ->get();
 
         $breakdown = $dtr->getCalculationBreakdown();
-        $totalEarlyOutMinutes = $attendanceLogs->sum(function ($log) {
-            if (!$log->pm_out) {
-                return 0;
+        $workingDayService = app(\App\Services\WorkingDayService::class);
+        $branchId = $dtr->employeeProfile?->branch_id;
+        $logsByDate = $attendanceLogs->keyBy(fn ($log) => $log->attendance_date->format('Y-m-d'));
+        $totalEarlyOutMinutes = 0;
+        $totalHolidays = 0;
+        $totalSuspensions = 0;
+        $totalSuspendedHours = 0.0;
+
+        foreach ($attendanceLogs as $log) {
+            if ($workingDayService->isSuspension($log->attendance_date, $branchId)) {
+                continue;
             }
 
-            $scheduledEnd = $log->pm_out->copy()->setTime(17, 0, 0);
+            if ($log->pm_out) {
+                $scheduledEnd = $log->pm_out->copy()->setTime(17, 0, 0);
+                if ($log->pm_out->lt($scheduledEnd)) {
+                    $totalEarlyOutMinutes += (int) $log->pm_out->diffInMinutes($scheduledEnd);
+                }
+            }
+        }
 
-            return $log->pm_out->lt($scheduledEnd)
-                ? (int) $log->pm_out->diffInMinutes($scheduledEnd)
-                : 0;
-        });
+        $currentDate = $dtr->period_start->copy();
+        while ($currentDate <= $dtr->period_end) {
+            $dateKey = $currentDate->format('Y-m-d');
+            $isSuspension = $workingDayService->isSuspension($currentDate, $branchId);
+            $totalHolidays += $workingDayService->isHoliday($currentDate, $branchId) ? 1 : 0;
+
+            if ($isSuspension) {
+                $totalSuspensions++;
+                $log = $logsByDate->get($dateKey);
+                $minutes = 0;
+
+                if ($log?->am_in && $log?->am_out) {
+                    $minutes += $log->am_in->diffInMinutes($log->am_out);
+                }
+                if ($log?->pm_in && $log?->pm_out) {
+                    $minutes += $log->pm_in->diffInMinutes($log->pm_out);
+                }
+                if (!$minutes && $log?->am_in && $log?->pm_out) {
+                    $minutes = $log->am_in->diffInMinutes($log->pm_out);
+                }
+
+                $totalSuspendedHours += $minutes / 60;
+            }
+
+            $currentDate->addDay();
+        }
 
         $stats = [
             'total_hours' => $breakdown['total_hours'],
@@ -565,6 +701,10 @@ class DTRManagementController
             'days_absent' => $breakdown['days_absent'],
             'total_paid_leave' => $breakdown['paid_leave'],
             'total_leave_without_pay' => $breakdown['leave_without_pay'],
+            'total_holidays' => $totalHolidays,
+            'total_suspensions' => $totalSuspensions,
+            'total_half_days' => $breakdown['half_day_days'],
+            'total_suspended_hours' => round($totalSuspendedHours, 2),
             'working_days' => max(1, $breakdown['days_present'] + $breakdown['days_absent'] + $breakdown['paid_leave'] + $breakdown['leave_without_pay']),
         ];
 

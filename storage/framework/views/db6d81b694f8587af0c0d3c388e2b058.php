@@ -1,6 +1,17 @@
 <?php $__env->startSection('title', 'Daily Time Record (DTR)'); ?>
 
 <?php $__env->startSection('content'); ?>
+<style>
+    body.dark-mode .current-period-card.border-primary {
+        border-color: #8E1EA2 !important;
+    }
+
+    body.dark-mode .current-period-header {
+        background-color: #8E1EA2 !important;
+        border-color: #8E1EA2 !important;
+    }
+</style>
+
 <div class="container-fluid py-4">
     <!-- Page Header -->
     <div class="row mb-4">
@@ -23,8 +34,8 @@
     <?php if($currentDTR): ?>
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card border-primary">
-                <div class="card-header bg-primary text-white">
+            <div class="card border-primary current-period-card">
+                <div class="card-header bg-primary text-white current-period-header">
                     <h5 class="mb-0">Current Period</h5>
                 </div>
                 <div class="card-body">

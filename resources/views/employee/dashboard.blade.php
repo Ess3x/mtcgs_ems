@@ -3,10 +3,17 @@
 @section('title', 'Employee Dashboard')
 
 @section('content')
-<div class="container-fluid dashboard-shell p-0">
+<style>
+    body.dark-mode .employee-dashboard-theme .employee-dashboard-accent {
+        background: #8E1EA2 !important;
+        background-image: none !important;
+    }
+</style>
+
+<div class="container-fluid dashboard-shell employee-dashboard-theme p-0">
     @include('dashboard.birthday-banner')
     <!-- Header Hero -->
-    <div class="card dashboard-hero mb-4" style="background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);">
+    <div class="card dashboard-hero employee-dashboard-accent mb-4" style="background: linear-gradient(135deg, #4f46e5 0%, #06b6d4 100%);">
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
                 <div>
@@ -127,7 +134,7 @@
     <!-- Stats Cards -->
     <div class="row g-3 mb-4">
         <div class="col-md-4">
-            <div class="card text-white" style="background: linear-gradient(135deg, #4f46e5, #6366f1); border: 0;">
+            <div class="card text-white employee-dashboard-accent" style="background: linear-gradient(135deg, #4f46e5, #6366f1); border: 0;">
                 <div class="card-body text-center py-4">
                     <i class="fas fa-calendar-check fa-2x mb-2 opacity-90"></i>
                     <div class="text-uppercase small fw-semibold opacity-90">Days Present</div>
@@ -137,7 +144,7 @@
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card text-white dashboard-days-late-card">
+            <div class="card text-white dashboard-days-late-card employee-dashboard-accent">
                 <div class="card-body text-center py-4">
                     <i class="fas fa-clock fa-2x mb-2 opacity-90"></i>
                     <div class="text-uppercase small fw-semibold opacity-90">Days Late</div>
@@ -147,7 +154,7 @@
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card text-white" style="background: linear-gradient(135deg, #06b6d4, #0ea5e9); border: 0;">
+            <div class="card text-white employee-dashboard-accent" style="background: linear-gradient(135deg, #06b6d4, #0ea5e9); border: 0;">
                 <div class="card-body text-center py-4">
                     <i class="fas fa-fingerprint fa-2x mb-2 opacity-90"></i>
                     <div class="text-uppercase small fw-semibold opacity-90">Biometric Status</div>

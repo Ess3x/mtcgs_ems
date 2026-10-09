@@ -15,7 +15,7 @@
         }
 
         .leave-credits-table {
-            min-width: 980px;
+            min-width: 1020px;
             margin-bottom: 0;
         }
 
@@ -45,7 +45,7 @@
             }
 
             .leave-credits-table {
-                min-width: 860px;
+                min-width: 960px;
             }
 
             .leave-credits-table th,
@@ -128,7 +128,7 @@
                                                 <th>Birthday</th>
                                                 <th>Maternity</th>
                                                 <th>Paternity</th>
-                                                <th>Cash Charges</th>
+                                                <th>Service Incentive Leave</th>
                                                 <th class="text-end">Action</th>
                                             </tr>
                                         </thead>
@@ -177,12 +177,16 @@
                                                         <input type="number" step="0.5" min="0" max="365" class="form-control form-control-sm" form="leave-form-{{ $employee->id }}" name="paternity_leave_total" value="{{ (int) ((float) ($balance->paternity_leave_total ?? 0)) }}">
                                                     </td>
                                                     <td>
-                                                        <input type="number" step="0.5" min="0" max="365" class="form-control form-control-sm" form="leave-form-{{ $employee->id }}" name="cash_charge_total" value="{{ (int) ((float) ($balance->cash_charge_total ?? 0)) }}">
+                                                        <input type="number" step="0.5" min="0" max="365" class="form-control form-control-sm" form="leave-form-{{ $employee->id }}" name="service_incentive_leave_total" value="{{ (int) ((float) ($balance->service_incentive_leave_total ?? 5)) }}">
                                                     </td>
                                                     <td class="text-end">
                                                         <form id="leave-form-{{ $employee->id }}" action="{{ route('admin.leave-credits.update', $employee) }}" method="POST" class="d-inline">
                                                             @csrf
                                                             <button type="submit" class="btn btn-primary btn-sm">Save</button>
+                                                        </form>
+                                                        <form action="{{ route('admin.leave-credits.reset-used', $employee) }}" method="POST" class="d-inline" onsubmit="return confirm('Reset all used leave credits for this employee? Their total entitlements will remain unchanged.')">
+                                                            @csrf
+                                                            <button type="submit" class="btn btn-outline-warning btn-sm">Reset Used</button>
                                                         </form>
                                                     </td>
                                                 </tr>

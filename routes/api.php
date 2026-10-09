@@ -19,6 +19,7 @@ Route::get('/biometric/time-clock', fn () => response()->json([
     'method' => 'POST',
 ], 405));
 Route::post('/biometric/time-clock', [BiometricController::class, 'processTimeClock']);
+Route::get('/biometric/suspensions', [BiometricController::class, 'getAttendanceSuspensions']);
 Route::get('/biometric/check-attendance', [BiometricController::class, 'checkAttendance']);
 Route::get('/biometric/templates', [BiometricController::class, 'getFingerprintTemplates']);
 Route::get('/biometric/dtr-today', [BiometricController::class, 'getTodayDTR']);

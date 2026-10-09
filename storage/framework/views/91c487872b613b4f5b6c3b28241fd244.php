@@ -268,11 +268,20 @@
                     <div class="alert alert-success py-2"><?php echo e(session('success')); ?></div>
                 <?php endif; ?>
 
+                <?php if(session('status')): ?>
+                    <div class="alert alert-success py-2"><?php echo e(session('status')); ?></div>
+                <?php endif; ?>
+
                 <?php if($errors->any()): ?>
                     <div class="alert alert-danger py-2">
                         <?php $__currentLoopData = $errors->all(); $__env->addLoop($__currentLoopData); foreach($__currentLoopData as $error): $__env->incrementLoopIndices(); $loop = $__env->getLastLoop(); ?>
                             <div><?php echo e($error); ?></div>
                         <?php endforeach; $__env->popLoop(); $loop = $__env->getLastLoop(); ?>
+                        <?php if(session('login_lockout_seconds')): ?>
+                            <div class="mt-2">
+                                You can try again in <strong id="loginLockoutCountdown"></strong>.
+                            </div>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -282,7 +291,7 @@
                         <label for="email" class="form-label">Email Address</label>
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-envelope"></i></span>
-                            <input type="email" id="email" name="email" class="form-control" placeholder="you@example.com" autocomplete="username" required autofocus>
+                            <input type="email" id="email" name="email" class="form-control" placeholder="you@example.com" autocomplete="username" value="<?php echo e(old('email')); ?>" required autofocus>
                         </div>
                     </div>
                     <div class="mb-4">
@@ -295,10 +304,16 @@
                             </span>
                         </div>
                     </div>
-                    <button type="submit" class="btn btn-login text-white w-100">
+                    <button type="submit" class="btn btn-login text-white w-100" id="loginSubmit" <?php if(session('login_lockout_seconds')): echo 'disabled'; endif; ?>>
                         <i class="fas fa-sign-in-alt me-1"></i> Login
                     </button>
                 </form>
+
+                <div class="text-center mt-3">
+                    <a href="<?php echo e(route('password.request')); ?>" class="back-link fw-semibold">
+                        <i class="fas fa-key me-1"></i> Forgot Password?
+                    </a>
+                </div>
 
                 <div class="text-center mt-4">
                     <a href="<?php echo e(url('/')); ?>" class="back-link">
@@ -310,6 +325,33 @@
     </div>
 
     <script>
+        (function () {
+            const countdown = document.getElementById('loginLockoutCountdown');
+            const submitButton = document.getElementById('loginSubmit');
+            let secondsRemaining = Number(<?php echo json_encode(session('login_lockout_seconds', 0), 512) ?>);
+
+            if (!countdown || !submitButton || secondsRemaining <= 0) {
+                return;
+            }
+
+            const unlockAt = Date.now() + secondsRemaining * 1000;
+            const updateCountdown = function () {
+                secondsRemaining = Math.max(0, Math.ceil((unlockAt - Date.now()) / 1000));
+                const minutes = Math.floor(secondsRemaining / 60);
+                const seconds = secondsRemaining % 60;
+                countdown.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+                if (secondsRemaining === 0) {
+                    submitButton.disabled = false;
+                    return;
+                }
+
+                window.setTimeout(updateCountdown, 250);
+            };
+
+            updateCountdown();
+        })();
+
         // Show / hide password toggle
         (function () {
             const toggle = document.getElementById('togglePassword');
