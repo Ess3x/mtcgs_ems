@@ -325,6 +325,23 @@
             background-color: #fed7aa;
             color: #9a3412;
         }
+        .dtr-table {
+            width: 100%;
+            min-width: 980px;
+            table-layout: fixed;
+        }
+
+        .dtr-correction-form {
+            width: 100%;
+            max-width: 240px;
+            margin: 0 auto;
+        }
+
+        .dtr-correction-form .form-control,
+        .dtr-correction-form .btn {
+            width: 100%;
+        }
+
         .dtr-table .dtr-late {
             color: #ff0000;
         }
@@ -446,19 +463,42 @@
                                             $isSuspension = ($day['status'] ?? null) === 'suspension' || ($day['is_suspension'] ?? false);
                                             $attendanceStatus = $day['log'] ? $day['log']->getDtrStatus() : null;
                                             $isNoRecordYet = false;
+<<<<<<< HEAD
+                                            $isAbsent = !$isWeekend && !$isHoliday && !$day['log'] && !$isLeave && !$isLWOP;
+=======
                                             $isAbsent = ($day['status'] ?? null) === 'absent';
                                             $isPending = ($day['status'] ?? null) === 'pending';
                                             $isUpcoming = ($day['status'] ?? null) === 'upcoming';
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                             $isLate = $attendanceStatus && str_contains($attendanceStatus, 'Late');
                                             $isEarlyOutStatus = $attendanceStatus && str_contains($attendanceStatus, 'Early Out');
                                             $isHalfDay = $attendanceStatus === 'Half Day';
+<<<<<<< HEAD
+                                            $isLateTimeIn = $isLate || (int) ($day['late_minutes'] ?? 0) > 0;
+                                            $rowClass = $isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : '')))));
+                                            $displayStatus = $isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : ($isNoRecordYet ? '' : 'Present'))))))));
+                                            $isEarlyOut = !empty($day['pm_out']) && $day['pm_out'] !== '--' && strtotime($day['pm_out']) < strtotime('17:00');
+<<<<<<< HEAD
+                                            $legacyApprovedWithoutCorrection = $day['log']
+                                                && $day['log']->override_status === 'approved'
+                                                && !$day['log']->corrected_time_in
+                                                && $day['log']->am_in
+                                                && $day['log']->am_in->format('H:i:s') > '07:00:00';
+                                            $canRequestCorrection = $day['log']
+                                                && (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
+                                                && (!in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true) || $legacyApprovedWithoutCorrection);
+=======
+                                            $canRequestCorrection = $day['log']
+=======
                                             $isLateTimeIn = !$isSuspension && ($isLate || (int) ($day['late_minutes'] ?? 0) > 0);
                                             $rowClass = $isSuspension ? 'dtr-status-suspension' : ($isLWOP ? 'dtr-absent' : ($isLeave ? 'dtr-leave' : ($isHoliday && !$day['log'] ? 'dtr-status-holiday' : ($isAbsent ? 'dtr-absent' : ($isHalfDay ? 'dtr-status-half-day' : ($isLate || $isEarlyOutStatus ? 'dtr-late' : ''))))));
                                             $displayStatus = $isSuspension ? 'Suspension' : ($isLWOP ? 'LWOP' : ($isLeave ? 'Leave Paid' : ($isHoliday && !$day['log'] ? 'Holiday' : ($isAbsent ? 'Absent' : ($attendanceStatus ?: ($isWeekend ? 'WKD' : ($isUpcoming ? 'Upcoming' : ($isPending ? 'Pending' : ($isNoRecordYet ? '' : 'Present')))))))));
                                             $isEarlyOut = !$isSuspension && !empty($day['pm_out']) && $day['pm_out'] !== '--' && strtotime($day['pm_out']) < strtotime('17:00');
                                             $canRequestCorrection = !$isSuspension && $day['log']
+>>>>>>> 8827208489f62a2b0f86a339ee6b6400eca3a5f2
                                                 && in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Early Out'], true)
                                                 && !in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin', 'approved'], true);
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                             $correctionFormId = 'attendance-correction-' . ($day['log']->id ?? $day['date']->format('Ymd'));
                                         @endphp
                                         <tr class="{{ $rowClass }}">
@@ -467,6 +507,26 @@
                                                 <small class="text-muted">{{ $day['day_name'] }}</small>
                                             </td>
                                             <td class="text-center {{ $isLateTimeIn && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
+<<<<<<< HEAD
+                                                @if (!$isLeave && !$isLWOP && $canRequestCorrection)
+                                                    @if (in_array($attendanceStatus, ['Late', 'Late / Early Out', 'Half Day'], true) || $legacyApprovedWithoutCorrection)
+                                                        <label class="small d-block mb-1">Time-in</label>
+                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_time_in" class="form-control form-control-sm mb-1" value="{{ $day['log']->am_in?->format('H:i') }}" aria-label="Corrected time-in">
+                                                    @endif
+                                                    @if ($attendanceStatus === 'Half Day')
+                                                        <label class="small d-block mb-1">PM time-in</label>
+                                                        <input form="{{ $correctionFormId }}" type="time" name="corrected_pm_in" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_in?->format('H:i') }}" aria-label="Corrected PM time-in">
+                                                    @endif
+                                                @else
+                                                    {{ !$isLeave && !$isLWOP ? ($day['am_in'] ?? '') : '--' }}
+                                                @endif
+                                            </td>
+                                            <td class="text-center {{ $isEarlyOut && !$isLeave && !$isLWOP ? 'dtr-late' : '' }}">
+                                                @if (!$isLeave && !$isLWOP && $canRequestCorrection && in_array($attendanceStatus, ['Early Out', 'Late / Early Out', 'Half Day'], true))
+                                                    <input form="{{ $correctionFormId }}" type="time" name="corrected_time_out" class="form-control form-control-sm mb-1" value="{{ $day['log']->pm_out?->format('H:i') }}" aria-label="Corrected time-out">
+                                                @else
+                                                    {{ !$isLeave && !$isLWOP ? ($day['pm_out'] ?? '') : '--' }}
+=======
                                                 @if (!$isLeave && !$isLWOP)
                                                     @if ($canRequestCorrection)
                                                         @if ($day['log']->am_in && $isLateTimeIn)
@@ -490,6 +550,7 @@
                                                     @endif
                                                 @else
                                                     --
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                                 @endif
                                             </td>
                                             <td class="text-center" style="
@@ -537,11 +598,14 @@
                                                 @else
                                                     Present
                                                 @endif
+<<<<<<< HEAD
+=======
                                                 @if ($day['log'] && in_array($day['log']->override_status, ['pending_branch', 'pending_system_admin'], true))
                                                     <small class="d-block text-muted mt-1">Adjustment pending approval</small>
                                                 @elseif ($day['log'] && $day['log']->override_status === 'approved')
                                                     <small class="d-block text-success mt-1">Adjusted to Present</small>
                                                 @endif
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                                             </td>
                                             <td class="text-center">
                                                 @if ($canRequestCorrection)

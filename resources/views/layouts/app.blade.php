@@ -688,7 +688,10 @@
                         </a>
                     @endif
                     @if(Auth::user()->admin_type === 'super_admin' || Auth::user()->role === 'branch_head' || (Auth::user()->role === 'admin' && Auth::user()->admin_type === 'branch_admin'))
+<<<<<<< HEAD
+=======
                         <div class="nav-group-label">Cash Management</div>
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                         <div class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle {{ request()->routeIs('admin.cash-charges.*') ? 'active' : '' }}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                                 <i class="fas fa-wallet"></i> Cash Charges
@@ -705,7 +708,10 @@
                             </div>
                         </div>
                     @endif
+<<<<<<< HEAD
+=======
                     <div class="nav-group-label">Biometric &amp; Devices</div>
+>>>>>>> 6be79ad89fa0ef0cc3ac5f84cd2c7dcd02635cd8
                     <a class="nav-link {{ request()->routeIs('admin.biometric') ? 'active' : '' }}" href="{{ route('admin.biometric') }}">
                         <i class="fas fa-fingerprint"></i> Biometric Setup
                     </a>
