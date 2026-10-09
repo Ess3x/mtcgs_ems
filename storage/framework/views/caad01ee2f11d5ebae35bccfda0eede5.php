@@ -355,9 +355,9 @@ async function loadUnregisteredEmployees() {
 
         employees.forEach(emp => {
             const isRegistered = Boolean(emp.is_fingerprint_registered);
-            const buttonLabel = isRegistered ? 'Registered' : 'Unregistered';
-            const statusClass = isRegistered ? 'bg-success' : 'bg-danger';
-            const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-fingerprint';
+            const buttonLabel = isRegistered ? 'Registered' : 'Pending';
+            const statusClass = isRegistered ? 'bg-success' : 'bg-warning';
+            const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-clock';
 
             html += `
                 <div class="list-group-item">
@@ -439,8 +439,8 @@ function renderStatusList(container, items, emptyMessage, accentClass, labelPref
 
         groupItems.forEach(item => {
         const isRegistered = Boolean(item.is_fingerprint_registered);
-        const buttonLabel = isRegistered ? 'Registered' : 'Unregistered';
-        const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-fingerprint';
+        const buttonLabel = isRegistered ? 'Registered' : 'Pending';
+        const buttonIcon = isRegistered ? 'fa-check-circle' : 'fa-clock';
         const statusClass = isRegistered ? 'bg-success' : accentClass;
         const emailText = item.email || item.position || 'N/A';
         const employeeLabel = item.employee_number ? `${item.employee_number}` : '';

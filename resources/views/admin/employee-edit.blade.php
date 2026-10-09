@@ -281,7 +281,7 @@
     });
 
     // Launch the desktop enrollment app using a custom URI scheme.
-    function launchEnrollmentApp() {
+    async function launchEnrollmentApp() {
         clearFingerprint.checked = false;
         fingerprintData.value = '';
         fingerprintStatus.classList.add('d-none');
@@ -301,6 +301,31 @@
 
         if (!firstName || !lastName) {
             alert('Please fill in First Name and Last Name before launching fingerprint enrollment.');
+            return;
+        }
+
+        registerFingerprintBtn.disabled = true;
+        scannerStatus.className = 'alert alert-info';
+        scannerStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparing a fresh fingerprint scan...';
+        try {
+            const clearResponse = await fetch('/api/fingerprint-temp/clear', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                },
+                body: JSON.stringify({ employee_number: employeeNumber })
+            });
+            const clearResult = await clearResponse.json();
+            if (!clearResponse.ok || !clearResult.success) {
+                throw new Error(clearResult.message || 'Could not prepare a fresh fingerprint scan.');
+            }
+        } catch (error) {
+            registerFingerprintBtn.disabled = false;
+            scannerStatus.className = 'alert alert-danger';
+            scannerStatus.textContent = error.message || 'Could not prepare a fresh fingerprint scan.';
             return;
         }
 
@@ -428,16 +453,6 @@
         }
         }, 300);
     }
-
-    // Resume polling when the desktop app closes and the browser becomes active again.
-    function resumeFingerprintPolling() {
-        if (!fingerprintData.value.trim() && !fingerprintCheckInterval && !document.hidden) {
-            startFingerprintPolling(String('{{ $employee->employee_number }}').trim());
-        }
-    }
-
-    window.addEventListener('focus', resumeFingerprintPolling);
-    document.addEventListener('visibilitychange', resumeFingerprintPolling);
 
     // Stop polling when leaving the page
     window.addEventListener('beforeunload', function() {

@@ -1053,4 +1053,63 @@ class EmployeeFingerprintRegistrationOnEditTest extends TestCase
             'is_fingerprint_registered' => false,
         ]);
     }
+
+    public function test_starting_enrollment_clears_stale_capture_and_does_not_return_another_employees_latest_capture(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-TEMP-CLEAR',
+            'branch_name' => 'Temporary Capture Branch',
+            'address' => 'Temporary Capture Address',
+        ]);
+        $admin = User::create([
+            'name' => 'System Admin',
+            'email' => 'admin.temp.clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'admin_type' => 'super_admin',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $employeeUser = User::create([
+            'name' => 'Buhi Employee',
+            'email' => 'buhi.employee.temp.clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'employee',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $employee = EmployeeProfile::create([
+            'user_id' => $employeeUser->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'BUHI-TEMP-001',
+            'first_name' => 'Buhi',
+            'last_name' => 'Employee',
+            'position' => 'Staff',
+            'date_hired' => now(),
+        ]);
+
+        cache()->put('fingerprint_temp_BUHI-TEMP-001', [
+            'employee_number' => 'BUHI-TEMP-001',
+            'fingerprint_data' => str_repeat('stale-template-', 20),
+        ], 3600);
+        cache()->put('fingerprint_temp_latest', [
+            'employee_number' => 'OTHER-EMPLOYEE',
+            'fingerprint_data' => str_repeat('other-template-', 20),
+        ], 3600);
+
+        $this->actingAs($admin)
+            ->postJson('/api/fingerprint-temp/clear', ['employee_number' => $employee->employee_number])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertNull(cache()->get('fingerprint_temp_BUHI-TEMP-001'));
+        $this->assertNotNull(cache()->get('fingerprint_temp_latest'));
+        $this->getJson('/api/fingerprint-temp?employee_number=BUHI-TEMP-001')
+            ->assertOk()
+            ->assertJson(['success' => false, 'pending' => true]);
+    }
 }

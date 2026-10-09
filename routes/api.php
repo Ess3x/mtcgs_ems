@@ -39,6 +39,7 @@ Route::get('/device-status', [MacAddressController::class, 'getDeviceStatus']);
 
 Route::middleware(['web', 'auth'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/fingerprint-temp/clear', [BiometricController::class, 'clearFingerprintTempForEnrollment']);
 
     // Biometric attendance and registration for web-authenticated users
     Route::post('/biometric/register', [BiometricController::class, 'registerFingerprint']);

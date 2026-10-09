@@ -252,7 +252,7 @@
             }
         });
 
-        function launchEnrollmentApp() {
+        async function launchEnrollmentApp() {
             clearFingerprint.checked = false;
             fingerprintData.value = '';
             fingerprintStatus.classList.add('d-none');
@@ -267,6 +267,31 @@
 
             if (!firstName || !lastName) {
                 alert('Please fill in First Name and Last Name before launching fingerprint enrollment.');
+                return;
+            }
+
+            registerFingerprintBtn.disabled = true;
+            scannerStatus.className = 'alert alert-info';
+            scannerStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Preparing a fresh fingerprint scan...';
+            try {
+                const clearResponse = await fetch('/api/fingerprint-temp/clear', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({ employee_number: employeeNumber })
+                });
+                const clearResult = await clearResponse.json();
+                if (!clearResponse.ok || !clearResult.success) {
+                    throw new Error(clearResult.message || 'Could not prepare a fresh fingerprint scan.');
+                }
+            } catch (error) {
+                registerFingerprintBtn.disabled = false;
+                scannerStatus.className = 'alert alert-danger';
+                scannerStatus.textContent = error.message || 'Could not prepare a fresh fingerprint scan.';
                 return;
             }
 
@@ -357,12 +382,6 @@
             }, 180);
         }
 
-        function resumeFingerprintPolling() {
-            if (!fingerprintData.value.trim() && !fingerprintCheckInterval && !document.hidden) {
-                startFingerprintPolling(String('<?php echo e($userData->employee_number ?? ''); ?>').trim());
-            }
-        }
-
         registerFingerprintBtn.addEventListener('click', function() {
             launchEnrollmentApp();
         });
@@ -379,9 +398,6 @@
             scannerStatus.className = 'alert alert-secondary';
             scannerStatus.innerHTML = '<i class="fas fa-stop"></i> Enrollment app launch cancelled.';
         });
-
-        window.addEventListener('focus', resumeFingerprintPolling);
-        document.addEventListener('visibilitychange', resumeFingerprintPolling);
 
         window.addEventListener('beforeunload', function() {
             if (fingerprintCheckInterval) {

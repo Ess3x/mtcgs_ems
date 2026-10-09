@@ -1938,8 +1938,12 @@ class BiometricController extends Controller
             $fingerprintData = cache()->get("fingerprint_temp_{$employeeNumber}");
         }
 
-        if (!$fingerprintData) {
-            $fingerprintData = cache()->get('fingerprint_temp_latest');
+        if (!$fingerprintData && $employeeNumber) {
+            $latest = cache()->get('fingerprint_temp_latest');
+            if (is_array($latest)
+                && strcasecmp(trim((string) ($latest['employee_number'] ?? '')), trim((string) $employeeNumber)) === 0) {
+                $fingerprintData = $latest;
+            }
         }
 
         if (!$fingerprintData) {
@@ -1954,6 +1958,42 @@ class BiometricController extends Controller
             'success' => true,
             'data' => $fingerprintData,
         ]);
+    }
+
+    public function clearFingerprintTempForEnrollment(Request $request)
+    {
+        $validated = $request->validate([
+            'employee_number' => 'required|string|max:100',
+        ]);
+
+        $user = $request->user();
+        if (!$user || (!$user->isSuperAdmin() && !$user->isBranchAdmin())) {
+            return response()->json(['success' => false, 'message' => 'You are not authorized to start fingerprint enrollment.'], 403);
+        }
+
+        $employeeNumber = trim($validated['employee_number']);
+        $profile = EmployeeProfile::where('employee_number', $employeeNumber)->first()
+            ?? FinanceProfile::where('employee_number', $employeeNumber)->first()
+            ?? AdminProfile::where('employee_number', $employeeNumber)->first()
+            ?? BranchHeadProfile::where('employee_number', $employeeNumber)->first();
+
+        if (!$profile) {
+            return response()->json(['success' => false, 'message' => 'Employee profile was not found.'], 404);
+        }
+
+        if ($user->isBranchAdmin()
+            && (int) $profile->branch_id !== (int) $user->getEffectiveBranchId()) {
+            return response()->json(['success' => false, 'message' => 'You can only start enrollment for a profile in your branch.'], 403);
+        }
+
+        cache()->forget("fingerprint_temp_{$employeeNumber}");
+        $latest = cache()->get('fingerprint_temp_latest');
+        if (is_array($latest)
+            && strcasecmp(trim((string) ($latest['employee_number'] ?? '')), $employeeNumber) === 0) {
+            cache()->forget('fingerprint_temp_latest');
+        }
+
+        return response()->json(['success' => true]);
     }
 
     // Check if employee's fingerprint is registered in database
