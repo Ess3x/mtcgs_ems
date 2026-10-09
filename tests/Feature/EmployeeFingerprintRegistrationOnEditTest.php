@@ -273,6 +273,145 @@ class EmployeeFingerprintRegistrationOnEditTest extends TestCase
         ]);
     }
 
+    public function test_admin_can_clear_employee_fingerprint_and_return_profile_to_unregistered_state(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-EDIT-CLEAR',
+            'branch_name' => 'Edit Clear Branch',
+            'address' => 'Edit Clear Address',
+        ]);
+        $admin = User::create([
+            'name' => 'System Admin',
+            'email' => 'admin-edit-clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'admin_type' => 'super_admin',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $employeeUser = User::create([
+            'name' => 'Jane Employee',
+            'email' => 'jane.employee.clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'employee',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $employee = EmployeeProfile::create([
+            'user_id' => $employeeUser->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'EMP-EDIT-CLEAR-01',
+            'first_name' => 'Jane',
+            'last_name' => 'Employee',
+            'position' => 'Cashier',
+            'basic_salary' => 25000,
+            'date_hired' => now(),
+            'fingerprint_template' => 'saved-fingerprint-template',
+            'is_fingerprint_registered' => true,
+        ]);
+        $employeeUser->profile_id = $employee->id;
+        $employeeUser->profile_type = EmployeeProfile::class;
+        $employeeUser->save();
+
+        $this->actingAs($admin)
+            ->put(route('admin.employee-update', $employee->id), [
+                'first_name' => 'Jane',
+                'last_name' => 'Employee',
+                'position' => 'Cashier',
+                'branch_id' => $branch->id,
+                'role' => 'employee',
+                'basic_salary' => '25000',
+                'is_active' => '1',
+                'date_hired' => now()->format('Y-m-d'),
+                'status' => 'Regular',
+                'clear_fingerprint' => '1',
+            ])
+            ->assertRedirect(route('admin.employees', absolute: false));
+
+        $this->assertDatabaseHas('employee_profiles', [
+            'id' => $employee->id,
+            'fingerprint_template' => null,
+            'is_fingerprint_registered' => false,
+        ]);
+    }
+
+    public function test_employee_edit_without_new_enrollment_leaves_saved_fingerprint_unchanged(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-EDIT-PRESERVE',
+            'branch_name' => 'Edit Preserve Branch',
+            'address' => 'Edit Preserve Address',
+        ]);
+        $admin = User::create([
+            'name' => 'System Admin',
+            'email' => 'admin-edit-preserve@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'admin_type' => 'super_admin',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $employeeUser = User::create([
+            'name' => 'Jane Employee',
+            'email' => 'jane.employee.preserve@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'employee',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $savedTemplate = json_encode([
+            'version' => 2,
+            'templates' => [
+                ['finger_name' => 'Left Thumb', 'fingerprint_data' => base64_encode('existing-left-thumb')],
+                ['finger_name' => 'Right Thumb', 'fingerprint_data' => base64_encode('existing-right-thumb')],
+            ],
+        ]);
+        $employee = EmployeeProfile::create([
+            'user_id' => $employeeUser->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'EMP-EDIT-PRESERVE-01',
+            'first_name' => 'Jane',
+            'last_name' => 'Employee',
+            'position' => 'Cashier',
+            'basic_salary' => 25000,
+            'date_hired' => now(),
+            'fingerprint_template' => $savedTemplate,
+            'is_fingerprint_registered' => true,
+        ]);
+        $employeeUser->profile_id = $employee->id;
+        $employeeUser->profile_type = EmployeeProfile::class;
+        $employeeUser->save();
+
+        $this->actingAs($admin)
+            ->put(route('admin.employee-update', $employee->id), [
+                'first_name' => 'Jane',
+                'last_name' => 'Employee Updated',
+                'position' => 'Cashier',
+                'branch_id' => $branch->id,
+                'role' => 'employee',
+                'basic_salary' => '25000',
+                'is_active' => '1',
+                'date_hired' => now()->format('Y-m-d'),
+                'status' => 'Regular',
+                'fingerprint_data' => '',
+            ])
+            ->assertRedirect(route('admin.employees', absolute: false));
+
+        $this->assertDatabaseHas('employee_profiles', [
+            'id' => $employee->id,
+            'fingerprint_template' => $savedTemplate,
+            'is_fingerprint_registered' => true,
+        ]);
+    }
+
     public function test_branch_admin_finance_employee_list_renders_without_collection_query_error(): void
     {
         $branch = Branch::create([
@@ -814,5 +953,104 @@ class EmployeeFingerprintRegistrationOnEditTest extends TestCase
                 && $mail->newStatus === 'Regular';
         });
     }
-}
 
+    public function test_clearing_finance_fingerprint_returns_it_to_unregistered_after_approval(): void
+    {
+        $branch = Branch::create([
+            'branch_code' => 'BR-FIN-CLEAR',
+            'branch_name' => 'Finance Clear Branch',
+            'address' => 'Finance Clear Address',
+        ]);
+        $superAdmin = User::create([
+            'name' => 'System Admin',
+            'email' => 'superadmin.finance.clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'admin_type' => 'super_admin',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $branchAdmin = User::create([
+            'name' => 'Branch Admin',
+            'email' => 'branch.admin.finance.clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'admin',
+            'admin_type' => 'branch_admin',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $adminProfile = AdminProfile::create([
+            'user_id' => $branchAdmin->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'BA-FIN-CLEAR',
+            'first_name' => 'Branch',
+            'last_name' => 'Admin',
+            'position' => 'Branch Manager',
+            'date_hired' => now(),
+        ]);
+        $branchAdmin->profile_id = $adminProfile->id;
+        $branchAdmin->profile_type = AdminProfile::class;
+        $branchAdmin->save();
+        $financeUser = User::create([
+            'name' => 'Finance Officer',
+            'email' => 'finance.officer.clear@example.com',
+            'password' => bcrypt('password'),
+            'role' => 'finance',
+            'branch_id' => $branch->id,
+            'is_active' => true,
+            'is_verified' => true,
+            'id_verification_status' => 'approved',
+        ]);
+        $financeProfile = FinanceProfile::create([
+            'user_id' => $financeUser->id,
+            'branch_id' => $branch->id,
+            'employee_number' => 'FIN-CLEAR-01',
+            'first_name' => 'Finance',
+            'last_name' => 'Officer',
+            'position' => 'Finance Officer',
+            'status' => 'Regular',
+            'basic_salary' => 30000,
+            'date_hired' => now(),
+            'fingerprint_template' => 'existing-fingerprint-template',
+            'is_fingerprint_registered' => true,
+        ]);
+        $financeUser->profile_id = $financeProfile->id;
+        $financeUser->profile_type = FinanceProfile::class;
+        $financeUser->save();
+
+        $updateUrl = route('admin.user-update', ['role' => 'finance', 'id' => $financeProfile->id]);
+        $baseChanges = [
+            'first_name' => 'Finance',
+            'last_name' => 'Officer',
+            'position' => 'Finance Officer',
+            'email' => $financeUser->email,
+            'status' => 'Regular',
+            'date_hired' => now()->format('Y-m-d'),
+            'is_active' => '1',
+        ];
+
+        $this->actingAs($branchAdmin)->put($updateUrl, $baseChanges);
+        $this->assertSame('existing-fingerprint-template', $financeProfile->fresh()->fingerprint_template);
+        $this->assertTrue($financeProfile->fresh()->is_fingerprint_registered);
+        $this->assertArrayNotHasKey('fingerprint_template', $financeProfile->fresh()->pending_changes);
+
+        $this->put($updateUrl, $baseChanges + ['clear_fingerprint' => '1']);
+        $pendingChanges = $financeProfile->fresh()->pending_changes;
+        $this->assertArrayHasKey('fingerprint_template', $pendingChanges);
+        $this->assertNull($pendingChanges['fingerprint_template']);
+        $this->assertFalse($pendingChanges['is_fingerprint_registered']);
+
+        $this->actingAs($superAdmin)
+            ->post(route('admin.user-finance-approve', $financeProfile->id));
+
+        $this->assertDatabaseHas('finance_profiles', [
+            'id' => $financeProfile->id,
+            'fingerprint_template' => null,
+            'is_fingerprint_registered' => false,
+        ]);
+    }
+}

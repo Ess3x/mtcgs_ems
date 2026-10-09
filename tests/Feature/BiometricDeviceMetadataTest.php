@@ -54,6 +54,9 @@ class BiometricDeviceMetadataTest extends TestCase
         }
         $values[] = $payload['branch'] ?? null;
         $values[] = $payload['attendance_timestamp'] ?? null;
+        if (isset($payload['fingerprint_scope']) && trim((string) $payload['fingerprint_scope']) !== '') {
+            $values[] = $payload['fingerprint_scope'];
+        }
         $payload['signature'] = hash_hmac(
             'sha256',
             implode('|', array_map(static fn ($value) => is_scalar($value) ? (string) $value : '', $values)),
@@ -286,6 +289,66 @@ class BiometricDeviceMetadataTest extends TestCase
             ->values()
             ->all();
         $this->assertSame([$irigaEmployee->employee_number], $templateNumbers);
+
+        $duplicateCheckIdentity = $this->signedDevicePayload([
+            'employee_id' => null,
+            'employee_number' => null,
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'iriga-cross-branch-duplicate-check',
+            'fingerprint_scope' => 'duplicate-check',
+        ], 'GET', '/api/biometric/templates');
+        $duplicateCheckResponse = (new BiometricController())->getFingerprintTemplates(
+            Request::create('/api/biometric/templates', 'GET', $duplicateCheckIdentity)
+        );
+        $this->assertSame(200, $duplicateCheckResponse->getStatusCode(), $duplicateCheckResponse->content());
+        $duplicateCheckNumbers = collect(json_decode($duplicateCheckResponse->content(), true)['templates'])
+            ->pluck('employee_number')
+            ->unique()
+            ->values()
+            ->all();
+        $this->assertEqualsCanonicalizing([
+            $irigaEmployee->employee_number,
+            $buhiEmployee->employee_number,
+        ], $duplicateCheckNumbers);
+
+        $duplicateEnrollment = $this->signedDevicePayload([
+            'employee_number' => $irigaEmployee->employee_number,
+            'fingerprint_data' => base64_encode('buhi-fingerprint-template'),
+            'finger_name' => 'Left Thumb',
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'iriga-duplicate-buhi-fingerprint',
+        ], 'POST', '/api/fingerprint-register-temp');
+        $duplicateEnrollmentResponse = (new BiometricController())->registerFingerprintTemp(
+            Request::create('/api/fingerprint-register-temp', 'POST', $duplicateEnrollment)
+        );
+        $this->assertSame(409, $duplicateEnrollmentResponse->getStatusCode(), $duplicateEnrollmentResponse->content());
+        $this->assertStringContainsString(
+            $buhiEmployee->employee_number,
+            json_decode($duplicateEnrollmentResponse->content(), true)['message']
+        );
+
+        $tamperedScope = $this->signedDevicePayload([
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'tampered-cross-branch-scope',
+            'fingerprint_scope' => 'duplicate-check',
+        ], 'GET', '/api/biometric/templates');
+        $tamperedScope['fingerprint_scope'] = 'all';
+        $tamperedScopeResponse = (new BiometricController())->getFingerprintTemplates(
+            Request::create('/api/biometric/templates', 'GET', $tamperedScope)
+        );
+        $this->assertSame(401, $tamperedScopeResponse->getStatusCode(), $tamperedScopeResponse->content());
 
         $replayResponse = (new BiometricController())->getFingerprintTemplates(
             Request::create('/api/biometric/templates', 'GET', $deviceIdentity)

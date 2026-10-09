@@ -679,8 +679,10 @@ class EmployeeController extends Controller
             'role' => $allowedRoles,
             'basic_salary' => 'nullable|numeric|min:0',
             'fingerprint_data' => 'nullable|string',
+            'clear_fingerprint' => 'nullable|boolean',
         ]);
 
+        $clearFingerprint = $request->boolean('clear_fingerprint');
         $fingerprintTemplate = $request->input('fingerprint_data');
         $fingerprintTemplate = is_string($fingerprintTemplate)
             ? preg_replace('/\s+/', '', trim($fingerprintTemplate))
@@ -691,12 +693,18 @@ class EmployeeController extends Controller
         $hasNewFingerprint = is_string($fingerprintTemplate)
             && $fingerprintTemplate !== ''
             && strtolower(trim($fingerprintTemplate)) !== 'null';
-        $fingerprintTemplate = $hasNewFingerprint
-            ? $this->appendFingerprintTemplate($employee->fingerprint_template, $fingerprintTemplate)
-            : $employee->fingerprint_template;
-        $isFingerprintRegistered = $hasNewFingerprint
-            ? true
-            : (bool) $employee->is_fingerprint_registered;
+
+        if ($clearFingerprint) {
+            $fingerprintTemplate = null;
+            $isFingerprintRegistered = false;
+        } else {
+            $fingerprintTemplate = $hasNewFingerprint
+                ? $this->appendFingerprintTemplate($employee->fingerprint_template, $fingerprintTemplate)
+                : $employee->fingerprint_template;
+            $isFingerprintRegistered = $hasNewFingerprint
+                ? true
+                : (bool) $employee->is_fingerprint_registered;
+        }
         $isBranchAdmin = ((Auth::user()->role === 'admin' && Auth::user()->admin_type === 'branch_admin') || Auth::user()->role === 'branch_head');
         $statusChanged = $request->status !== $employee->status;
             $previousStatus = $employee->status ?? 'New Hire';
@@ -715,9 +723,11 @@ class EmployeeController extends Controller
                 'basic_salary' => $basicSalary,
                 'branch_id' => $branchId,
                 'date_hired' => $request->date_hired,
-                'fingerprint_template' => $fingerprintTemplate,
-                'is_fingerprint_registered' => $isFingerprintRegistered,
             ];
+            if ($clearFingerprint || $hasNewFingerprint) {
+                $employeeUpdates['fingerprint_template'] = $fingerprintTemplate;
+                $employeeUpdates['is_fingerprint_registered'] = $isFingerprintRegistered;
+            }
 
             if ($isBranchAdmin && $statusChanged) {
                 $employeeUpdates += [

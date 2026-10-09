@@ -1368,33 +1368,66 @@ class BiometricController extends Controller
             ], 403);
         }
 
-        $templates = EmployeeProfile::where('branch_id', $device->branch_id)
-            ->where('is_fingerprint_registered', true)
-            ->whereNotNull('fingerprint_template')
-            ->with('branch:id,branch_name')
-            ->when($request->filled('employee_number'), function ($query) use ($request) {
-                $query->where('employee_number', trim($request->employee_number));
-            })
-            ->get(['employee_number', 'first_name', 'last_name', 'branch_id', 'position', 'fingerprint_template'])
-            ->flatMap(function ($employee) {
-                return collect($this->fingerprintTemplateList($employee->fingerprint_template))
-                    ->map(function ($template) use ($employee) {
-                        return [
-                            'employee_number' => $employee->employee_number,
-                            'first_name' => $employee->first_name,
-                            'last_name' => $employee->last_name,
-                            'branch_id' => $employee->branch_id,
-                            'branch_name' => $employee->branch?->branch_name ?? 'N/A',
-                            'position' => $employee->position,
-                            'fingerprint_template' => base64_encode($this->fingerprintBytes($template)),
-                        ];
-                    });
-            });
+        $crossBranchDuplicateCheck = $request->input('fingerprint_scope') === 'duplicate-check';
+        $templates = collect();
+        foreach ([EmployeeProfile::class, FinanceProfile::class, AdminProfile::class, BranchHeadProfile::class] as $profileType) {
+            $profiles = $profileType::query()
+                ->whereNotNull('fingerprint_template')
+                ->where('fingerprint_template', '!=', '')
+                ->when(!$crossBranchDuplicateCheck, fn ($query) => $query->where('branch_id', $device->branch_id))
+                ->when($request->filled('employee_number'), fn ($query) => $query->where('employee_number', trim($request->employee_number)))
+                ->with('branch:id,branch_name')
+                ->get(['employee_number', 'first_name', 'last_name', 'branch_id', 'position', 'fingerprint_template']);
+
+            $templates = $templates->concat(
+                $profiles->flatMap(fn ($profile) => $this->fingerprintTemplateResponseItems($profile))
+            );
+        }
 
         return response()->json([
             'success' => true,
             'templates' => $templates,
         ]);
+    }
+
+    private function fingerprintTemplateResponseItems($profile): \Illuminate\Support\Collection
+    {
+        return collect($this->fingerprintTemplateList($profile->fingerprint_template))
+            ->map(fn ($template) => [
+                'employee_number' => $profile->employee_number,
+                'first_name' => $profile->first_name,
+                'last_name' => $profile->last_name,
+                'branch_id' => $profile->branch_id,
+                'branch_name' => $profile->branch?->branch_name ?? 'N/A',
+                'position' => $profile->position,
+                'fingerprint_template' => base64_encode($this->fingerprintBytes($template)),
+                'registered_fingers' => $this->fingerprintNamesForTemplate(
+                    $profile->fingerprint_template,
+                    $template
+                ),
+            ]);
+    }
+
+    private function fingerprintNamesForTemplate($storedTemplate, string $template): array
+    {
+        $decoded = json_decode((string) $storedTemplate, true);
+        if (!is_array($decoded) || !is_array($decoded['templates'] ?? null)) {
+            return [];
+        }
+
+        foreach ($decoded['templates'] as $item) {
+            if (!is_array($item)
+                || !is_string($item['fingerprint_data'] ?? null)
+                || !$this->singleTemplateMatches($item['fingerprint_data'], $template)) {
+                continue;
+            }
+
+            return is_string($item['finger_name'] ?? null) && $item['finger_name'] !== ''
+                ? [$item['finger_name']]
+                : [];
+        }
+
+        return [];
     }
 
     public function getAttendanceSuspensions(Request $request)

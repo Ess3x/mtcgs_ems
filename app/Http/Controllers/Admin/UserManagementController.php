@@ -156,6 +156,7 @@ class UserManagementController extends Controller
                 'date_of_birth' => 'nullable|date|before_or_equal:today',
                 'gender' => 'nullable|in:Male,Female,Other',
                 'fingerprint_data' => 'nullable|string',
+                'clear_fingerprint' => 'nullable|boolean',
             ]);
         }
         
@@ -186,13 +187,18 @@ class UserManagementController extends Controller
             $user = $profile->user;
             $this->validateEmail($request, $user);
 
+            $clearFingerprint = $request->boolean('clear_fingerprint');
             $fingerprintTemplate = $request->input('fingerprint_data');
             $fingerprintTemplate = is_string($fingerprintTemplate)
                 ? preg_replace('/\s+/', '', trim($fingerprintTemplate))
                 : null;
 
             $jsonSafeFingerprint = null;
-            if (is_string($fingerprintTemplate) && $fingerprintTemplate !== '') {
+            $hasNewFingerprint = is_string($fingerprintTemplate)
+                && $fingerprintTemplate !== ''
+                && strtolower(trim($fingerprintTemplate)) !== 'null';
+
+            if ($hasNewFingerprint) {
                 $normalizedFingerprint = preg_replace('/\s+/', '', trim($fingerprintTemplate));
                 $decoded = base64_decode($normalizedFingerprint, true);
 
@@ -206,7 +212,10 @@ class UserManagementController extends Controller
                 }
             }
 
-            $isFingerprintRegistered = is_string($fingerprintTemplate) && $fingerprintTemplate !== '' && strtolower(trim((string) $fingerprintTemplate)) !== 'null';
+            if ($clearFingerprint) {
+                $fingerprintTemplate = null;
+                $jsonSafeFingerprint = null;
+            }
 
             $financeChanges = [
                 'first_name' => $request->first_name,
@@ -218,12 +227,14 @@ class UserManagementController extends Controller
                 'date_hired' => $request->date_hired ? $request->date_hired : $profile->date_hired,
                 'date_of_birth' => $request->date_of_birth ?: optional($profile->employeeProfile)->date_of_birth?->format('Y-m-d'),
                 'gender' => $request->gender,
-                'fingerprint_template' => $jsonSafeFingerprint ?? $fingerprintTemplate,
-                'is_fingerprint_registered' => $isFingerprintRegistered,
             ];
+            if ($clearFingerprint || $hasNewFingerprint) {
+                $financeChanges['fingerprint_template'] = $jsonSafeFingerprint ?? $fingerprintTemplate;
+                $financeChanges['is_fingerprint_registered'] = !$clearFingerprint;
+            }
 
             if ($currentUser->admin_type === 'branch_admin') {
-                $profile->update([
+                $financeProfileUpdates = [
                     'first_name' => $request->first_name,
                     'last_name' => $request->last_name,
                     'position' => $request->position,
@@ -232,12 +243,17 @@ class UserManagementController extends Controller
                     'date_hired' => $request->date_hired ? $request->date_hired : $profile->date_hired,
                     'date_of_birth' => $request->date_of_birth,
                     'gender' => $request->gender,
-                    'fingerprint_template' => $jsonSafeFingerprint ?? $fingerprintTemplate,
-                    'is_fingerprint_registered' => $isFingerprintRegistered,
                     'pending_changes' => $financeChanges,
                     'changes_requested_by' => $currentUser->id,
                     'changes_requested_at' => now(),
-                ]);
+                ];
+                if ($clearFingerprint || $hasNewFingerprint) {
+                    $financeProfileUpdates['fingerprint_template'] = $clearFingerprint
+                        ? null
+                        : ($jsonSafeFingerprint ?? $fingerprintTemplate);
+                    $financeProfileUpdates['is_fingerprint_registered'] = !$clearFingerprint;
+                }
+                $profile->update($financeProfileUpdates);
 
                 if ($user) {
                     $profile->user->update([
@@ -271,16 +287,21 @@ class UserManagementController extends Controller
                     ->with('success', 'Finance Officer updated and submitted to the System Administrator for approval.');
             }
 
-            $profile->update([
+            $financeProfileUpdates = [
                 'first_name' => $request->first_name,
                 'last_name' => $request->last_name,
                 'position' => $request->position,
                 'can_process_payroll' => $request->has('can_process_payroll'),
                 'status' => $request->status ?? $profile->status,
                 'date_hired' => $request->date_hired ? $request->date_hired : $profile->date_hired,
-                'fingerprint_template' => $fingerprintTemplate,
-                'is_fingerprint_registered' => $isFingerprintRegistered,
-            ]);
+            ];
+            if ($clearFingerprint || $hasNewFingerprint) {
+                $financeProfileUpdates['fingerprint_template'] = $clearFingerprint
+                    ? null
+                    : $fingerprintTemplate;
+                $financeProfileUpdates['is_fingerprint_registered'] = !$clearFingerprint;
+            }
+            $profile->update($financeProfileUpdates);
             $profile->employeeProfile?->update([
                 'date_of_birth' => $request->date_of_birth,
                 'gender' => $request->gender,
@@ -364,6 +385,7 @@ class UserManagementController extends Controller
         $email = $changes['email'] ?? $profile->user?->email;
         $approvedStatus = $changes['status'] ?? $profile->status;
         $approvedDateHired = $changes['date_hired'] ?? $profile->date_hired;
+        $hasFingerprintChange = array_key_exists('fingerprint_template', $changes);
         $approvedFingerprint = $changes['fingerprint_template'] ?? null;
 
         if (is_string($approvedFingerprint) && $approvedFingerprint !== '') {
@@ -378,12 +400,16 @@ class UserManagementController extends Controller
             'can_process_payroll' => $changes['can_process_payroll'] ?? false,
             'status' => $approvedStatus,
             'date_hired' => $approvedDateHired,
-            'fingerprint_template' => $approvedFingerprint ?? $profile->fingerprint_template,
-            'is_fingerprint_registered' => $changes['is_fingerprint_registered'] ?? $profile->is_fingerprint_registered,
             'pending_changes' => null,
             'changes_requested_by' => null,
             'changes_requested_at' => null,
         ]);
+        if ($hasFingerprintChange) {
+            $profile->update([
+                'fingerprint_template' => $approvedFingerprint,
+                'is_fingerprint_registered' => (bool) ($changes['is_fingerprint_registered'] ?? false),
+            ]);
+        }
 
         if ($profile->employeeProfile) {
             $profile->employeeProfile->update([

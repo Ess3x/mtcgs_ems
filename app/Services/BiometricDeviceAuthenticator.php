@@ -23,6 +23,7 @@ class BiometricDeviceAuthenticator
         'finger_name',
         'branch',
         'attendance_timestamp',
+        'fingerprint_scope',
     ];
 
     public function authenticate(Request $request, bool $requireActive = true): array
@@ -99,7 +100,7 @@ class BiometricDeviceAuthenticator
 
         foreach (self::SIGNED_FIELDS as $field) {
             $value = $request->input($field);
-            if ($field === 'finger_name' && !filled($value)) {
+            if (in_array($field, ['finger_name', 'fingerprint_scope'], true) && !filled($value)) {
                 continue;
             }
             $values[] = is_scalar($value) ? (string) $value : '';

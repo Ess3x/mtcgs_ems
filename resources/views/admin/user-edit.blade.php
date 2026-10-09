@@ -26,11 +26,11 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">First Name</label>
-                                <input type="text" name="first_name" class="form-control" value="{{ $userData->first_name }}" required>
+                                <input type="text" name="first_name" class="form-control" value="{{ old('first_name', $userData->first_name) }}" required>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Last Name</label>
-                                <input type="text" name="last_name" class="form-control" value="{{ $userData->last_name }}" required>
+                                <input type="text" name="last_name" class="form-control" value="{{ old('last_name', $userData->last_name) }}" required>
                             </div>
                         </div>
                         
@@ -69,7 +69,8 @@
                             <div class="row">
                                 <div class="col-md-6 mb-3">
                                     <label for="date-of-birth" class="form-label">Date of Birth</label>
-                                    <input type="date" id="date-of-birth" name="date_of_birth" class="form-control" value="{{ old('date_of_birth', optional($linkedEmployeeProfile?->date_of_birth)->format('Y-m-d')) }}">
+                                    <input type="date" id="date-of-birth" name="date_of_birth" class="form-control" value="{{ old('date_of_birth', optional($linkedEmployeeProfile?->date_of_birth)->format('Y-m-d')) }}" max="{{ now()->toDateString() }}">
+                                    <small id="age-display" class="form-text text-muted" aria-live="polite">Enter a date of birth to calculate age.</small>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="gender" class="form-label">Gender</label>
@@ -79,6 +80,7 @@
                                         <option value="Female" {{ old('gender', $linkedEmployeeProfile->gender ?? '') === 'Female' ? 'selected' : '' }}>Female</option>
                                         <option value="Other" {{ old('gender', $linkedEmployeeProfile->gender ?? '') === 'Other' ? 'selected' : '' }}>Other</option>
                                     </select>
+                                    <small id="gender-suggestion" class="form-text text-muted" aria-live="polite">Gender suggestion is based on the given name only; please confirm.</small>
                                 </div>
                             </div>
                             <div class="row">
@@ -145,6 +147,10 @@
                                                 <label for="fingerprint-data" class="form-label">Fingerprint Data</label>
                                                 <textarea name="fingerprint_data" id="fingerprint-data" class="form-control" rows="3" readonly placeholder="Fingerprint data will appear here after scanning..."></textarea>
                                                 <small class="text-muted">This field will be populated automatically after fingerprint scanning.</small>
+                                                <div class="form-check mt-2">
+                                                    <input type="checkbox" name="clear_fingerprint" id="clear-fingerprint" value="1" class="form-check-input">
+                                                    <label for="clear-fingerprint" class="form-check-label">Remove saved fingerprints and return this officer to the unregistered enrollment list</label>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -232,13 +238,22 @@
         const fingerprintScanner = document.getElementById('fingerprint-scanner');
         const fingerprintData = document.getElementById('fingerprint-data');
         const fingerprintStatus = document.getElementById('fingerprint-status');
+        const clearFingerprint = document.getElementById('clear-fingerprint');
         const startScanBtn = document.getElementById('start-scan-btn');
         const stopScanBtn = document.getElementById('stop-scan-btn');
         const scannerStatus = document.getElementById('scanner-status');
         const scanProgress = document.getElementById('scan-progress');
         const progressBar = scanProgress ? scanProgress.querySelector('.progress-bar') : null;
 
+        clearFingerprint.addEventListener('change', function() {
+            if (this.checked) {
+                fingerprintData.value = '';
+                fingerprintStatus.classList.add('d-none');
+            }
+        });
+
         function launchEnrollmentApp() {
+            clearFingerprint.checked = false;
             fingerprintData.value = '';
             fingerprintStatus.classList.add('d-none');
 
@@ -317,6 +332,7 @@
                             clearInterval(fingerprintCheckInterval);
                             fingerprintCheckInterval = null;
                             fingerprintData.value = incomingData;
+                            clearFingerprint.checked = false;
 
                             fingerprintStatus.className = 'badge bg-success me-2';
                             fingerprintStatus.innerHTML = '<i class="fas fa-check-circle"></i> Registered ✓';
@@ -382,4 +398,5 @@
         });
     @endif
 </script>
+@include('admin.partials.employee-demographics-script')
 @endsection

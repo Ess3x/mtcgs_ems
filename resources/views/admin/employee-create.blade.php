@@ -19,11 +19,11 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">First Name <span class="text-danger">*</span></label>
-                                <input type="text" name="first_name" class="form-control" required>
+                                <input type="text" id="first-name" name="first_name" class="form-control" value="{{ old('first_name') }}" autocomplete="given-name" required>
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Last Name <span class="text-danger">*</span></label>
-                                <input type="text" name="last_name" class="form-control" required>
+                                <input type="text" id="last-name" name="last_name" class="form-control" value="{{ old('last_name') }}" autocomplete="family-name" required>
                             </div>
                         </div>
                         
@@ -63,17 +63,19 @@
 
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">Date of Birth</label>
-                                <input type="date" name="date_of_birth" class="form-control" value="{{ old('date_of_birth') }}">
+                                <label for="date-of-birth" class="form-label">Date of Birth</label>
+                                <input type="date" id="date-of-birth" name="date_of_birth" class="form-control" value="{{ old('date_of_birth') }}" max="{{ now()->toDateString() }}">
+                                <small id="age-display" class="form-text text-muted" aria-live="polite">Enter a date of birth to calculate age.</small>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label class="form-label">Gender</label>
-                                <select name="gender" class="form-control">
+                                <label for="gender" class="form-label">Gender</label>
+                                <select id="gender" name="gender" class="form-control">
                                     <option value="">-- Select Gender --</option>
                                     <option value="Male" {{ old('gender') === 'Male' ? 'selected' : '' }}>Male</option>
                                     <option value="Female" {{ old('gender') === 'Female' ? 'selected' : '' }}>Female</option>
                                     <option value="Other" {{ old('gender') === 'Other' ? 'selected' : '' }}>Other</option>
                                 </select>
+                                <small id="gender-suggestion" class="form-text text-muted" aria-live="polite">Gender suggestion is based on the given name only; please confirm.</small>
                             </div>
                         </div>
 
@@ -174,5 +176,7 @@
         updateFinanceHeadFields();
     });
 </script>
+
+@include('admin.partials.employee-demographics-script')
 
 @endsection
