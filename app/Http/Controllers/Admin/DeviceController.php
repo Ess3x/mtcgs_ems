@@ -132,6 +132,15 @@ class DeviceController extends Controller
         return view('admin.devices.edit', compact('device', 'branches'));
     }
 
+    public function show(Device $device)
+    {
+        $this->authorizeDeviceManagement();
+
+        $device->load('branch');
+
+        return view('admin.devices.show', compact('device'));
+    }
+
     public function update(Request $request, Device $device)
     {
         $this->authorizeDeviceManagement();

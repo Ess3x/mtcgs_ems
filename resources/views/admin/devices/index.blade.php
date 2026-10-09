@@ -96,7 +96,8 @@
                                 </td>
                                 <td class="device-last-used">{{ $device->last_used_at ? $device->last_used_at->format('M d, Y h:i A') : 'Never' }}</td>
                                 <td>
-                                    <div class="d-flex gap-2">
+                                    <div class="d-flex flex-wrap gap-2">
+                                        <a href="{{ route('admin.devices.show', $device) }}" class="btn btn-sm btn-outline-primary">View</a>
                                         <a href="{{ route('admin.devices.edit', $device) }}" class="btn btn-sm btn-warning">Edit</a>
                                         <form action="{{ route('admin.devices.destroy', $device) }}" method="POST" data-delete-device>
                                             @csrf
