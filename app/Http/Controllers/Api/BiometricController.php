@@ -1518,8 +1518,11 @@ class BiometricController extends Controller
         }
 
         if ((int) $device->branch_id !== (int) $employee->branch_id) {
-            $message = 'This device belongs to ' . $device->branch?->branch_name
-                . '. This user cannot record attendance on this device.';
+            $deviceBranchName = $device->branch?->branch_name ?? 'another branch';
+            $employeeBranchName = $employee->branch?->branch_name ?? 'another branch';
+            $message = 'Attendance denied. You are assigned to ' . $employeeBranchName
+                . ', but this device is assigned to ' . $deviceBranchName
+                . '. Please use the attendance device for your own branch.';
 
             return response()->json([
                 'success' => false,

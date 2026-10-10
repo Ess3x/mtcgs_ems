@@ -198,6 +198,43 @@ class BiometricDeviceMetadataTest extends TestCase
             2,
             cache()->get('fingerprint_temp_' . $employee->employee_number)['fingerprint_count']
         );
+
+        $statusPayload = $this->signedDevicePayload([
+            'employee_number' => $employee->employee_number,
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'finger-slot-status-refresh',
+        ], 'GET', '/api/biometric/templates');
+        $statusResponse = (new BiometricController())->getFingerprintTemplates(
+            Request::create('/api/biometric/templates', 'GET', $statusPayload)
+        );
+        $registeredFingers = collect(json_decode($statusResponse->content(), true)['templates'])
+            ->flatMap(fn ($template) => $template['registered_fingers'] ?? [])
+            ->unique()
+            ->values()
+            ->all();
+        $this->assertEqualsCanonicalizing(['Left Thumb', 'Right Thumb'], $registeredFingers);
+
+        $employee->update([
+            'fingerprint_template' => null,
+            'is_fingerprint_registered' => false,
+        ]);
+        $emptyStatusPayload = $this->signedDevicePayload([
+            'employee_number' => $employee->employee_number,
+            'device_serial' => $device->serial_number,
+            'wifi_mac' => 'AA:BB:CC:DD:EE:FF',
+            'device_id' => (string) $device->id,
+            'mac_address' => 'AA:BB:CC:DD:EE:FF',
+            'timestamp' => now()->toIso8601String(),
+            'nonce' => 'finger-slot-status-cleared',
+        ], 'GET', '/api/biometric/templates');
+        $emptyStatusResponse = (new BiometricController())->getFingerprintTemplates(
+            Request::create('/api/biometric/templates', 'GET', $emptyStatusPayload)
+        );
+        $this->assertSame([], json_decode($emptyStatusResponse->content(), true)['templates']);
     }
 
     public function test_device_templates_are_branch_scoped_and_cross_branch_clock_is_rejected(): void
@@ -373,8 +410,44 @@ class BiometricDeviceMetadataTest extends TestCase
         );
 
         $this->assertSame(403, $attendanceResponse->getStatusCode(), $attendanceResponse->content());
+        $attendanceMessage = json_decode($attendanceResponse->content(), true)['message'];
+        $this->assertStringContainsString('Buhi Test Branch', $attendanceMessage);
+        $this->assertStringContainsString('Iriga Test Branch', $attendanceMessage);
         $this->assertDatabaseMissing('attendance_logs', [
             'employee_profile_id' => $buhiEmployee->id,
+        ]);
+
+        $buhiDevice = Device::create([
+            'mac_address' => '11-22-33-44-55-66',
+            'serial_number' => 'SERIAL-BUHI-TEMPLATE-001',
+            'api_secret' => self::DEVICE_SECRET,
+            'device_name' => 'Buhi Test Scanner',
+            'device_type' => 'computer',
+            'branch_id' => $buhi->id,
+            'status' => 'active',
+        ]);
+        $reverseAttendancePayload = $this->signedDevicePayload([
+            'employee_number' => $irigaEmployee->employee_number,
+            'fingerprint_data' => $irigaEmployee->fingerprint_template,
+            'action' => 'TIME-IN',
+            'device_serial' => $buhiDevice->serial_number,
+            'wifi_mac' => '11:22:33:44:55:66',
+            'device_id' => (string) $buhiDevice->id,
+            'mac_address' => '11:22:33:44:55:66',
+            'timestamp' => now()->toIso8601String(),
+            'attendance_timestamp' => now()->toIso8601String(),
+            'nonce' => 'cross-branch-time-in-reverse',
+        ], 'POST', '/api/biometric/time-clock');
+        $reverseAttendanceResponse = (new BiometricController())->processTimeClock(
+            Request::create('/api/biometric/time-clock', 'POST', $reverseAttendancePayload)
+        );
+
+        $this->assertSame(403, $reverseAttendanceResponse->getStatusCode(), $reverseAttendanceResponse->content());
+        $reverseAttendanceMessage = json_decode($reverseAttendanceResponse->content(), true)['message'];
+        $this->assertStringContainsString('Iriga Test Branch', $reverseAttendanceMessage);
+        $this->assertStringContainsString('Buhi Test Branch', $reverseAttendanceMessage);
+        $this->assertDatabaseMissing('attendance_logs', [
+            'employee_profile_id' => $irigaEmployee->id,
         ]);
     }
 
